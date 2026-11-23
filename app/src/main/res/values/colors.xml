@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="zeecrown_ivory">#FFFFFDF9</color>
+    <color name="zeecrown_blush_pink">#FFF8E8EA</color>
+    <color name="zeecrown_dusty_rose">#FFC98F9B</color>
+    <color name="zeecrown_mauve">#FFB79AAF</color>
+    <color name="zeecrown_champagne_gold">#FFC8AA78</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

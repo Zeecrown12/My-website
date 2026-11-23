@@ -1,0 +1,121 @@
+[build]
+  publish = "public"
+
+# Security & crawl hygiene headers for public web assets
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/.well-known/assetlinks.json"
+  [headers.values]
+    Content-Type = "application/json; charset=utf-8"
+    Cache-Control = "public, max-age=300"
+
+# ============================================================================
+# Cloud Functions SSR & Dynamic Sitemap Proxy Setup
+# After running `firebase deploy --only functions`, replace
+# `REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL` (e.g. https://us-central1-<project>.cloudfunctions.net)
+# so Netlify proxies public crawlable pages and dynamic XML sitemaps to Firebase.
+# Until replaced, static /public/index.html, /public/robots.txt, and /public/404.html serve.
+# ============================================================================
+
+# [[redirects]]
+#   from = "/sitemap.xml"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/sitemapXml"
+#   status = 200
+#   force = true
+#
+# [[redirects]]
+#   from = "/robots.txt"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/robotsTxt"
+#   status = 200
+#   force = true
+#
+# [[redirects]]
+#   from = "/shop"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/seoServe/shop"
+#   status = 200
+#
+# [[redirects]]
+#   from = "/product/*"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/seoServe/product/:splat"
+#   status = 200
+#
+# [[redirects]]
+#   from = "/category/*"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/seoServe/category/:splat"
+#   status = 200
+#
+# [[redirects]]
+#   from = "/collection/*"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/seoServe/collection/:splat"
+#   status = 200
+#
+# [[redirects]]
+#   from = "/about"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/seoServe/about"
+#   status = 200
+#
+# [[redirects]]
+#   from = "/contact"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/seoServe/contact"
+#   status = 200
+#
+# [[redirects]]
+#   from = "/shipping-policy"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/seoServe/shipping-policy"
+#   status = 200
+#
+# [[redirects]]
+#   from = "/returns-policy"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/seoServe/returns-policy"
+#   status = 200
+#
+# [[redirects]]
+#   from = "/api/ai/chat"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/aiAssistantChat"
+#   status = 200
+#   force = true
+#
+# [[redirects]]
+#   from = "/api/ai/escalate"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/aiAssistantEscalate"
+#   status = 200
+#   force = true
+#
+# [[redirects]]
+#   from = "/api/ai/guest-track"
+#   to = "REPLACE_WITH_CLOUD_FUNCTIONS_BASE_URL/lookupGuestOrder"
+#   status = 200
+#   force = true
+
+[[redirects]]
+  from = "/products/*"
+  to = "/product/:splat"
+  status = 301
+
+[[redirects]]
+  from = "/categories/*"
+  to = "/category/:splat"
+  status = 301
+
+[[redirects]]
+  from = "/collections/*"
+  to = "/collection/:splat"
+  status = 301
+
+# Serve dedicated non-indexed 404 page instead of soft-404 home fallback
+[[redirects]]
+  from = "/*"
+  to = "/404.html"
+  status = 404

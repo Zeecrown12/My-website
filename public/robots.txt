@@ -1,0 +1,25 @@
+User-agent: *
+Allow: /
+Allow: /shop
+Allow: /product/
+Allow: /category/
+Allow: /collection/
+Allow: /about
+Allow: /contact
+Allow: /shipping-policy
+Allow: /returns-policy
+Disallow: /admin
+Disallow: /account
+Disallow: /bag
+Disallow: /cart
+Disallow: /checkout
+Disallow: /auth
+Disallow: /login
+Disallow: /register
+Disallow: /notifications
+Disallow: /track
+Disallow: /order/
+Disallow: /support
+Disallow: /search
+
+Sitemap: https://zeecrownstore.com/sitemap.xml

@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">Zeecrown Store</string>
+    <string name="brand_title_uppercase">ZEECROWN STORE</string>
+    <string name="brand_logo_placeholder">LOGO PLACEHOLDER</string>
+    <string name="brand_tagline">Curated Nigerian &amp; Global Luxury Fashion</string>
+    <string name="sign_in_with_google">Continue with Google</string>
+    <string name="sign_in_headline">Timeless Elegance, Crafted for You</string>
+    <string name="sign_in_subtitle">Sign in with your Google account to sync your shopping bag, wishlist, orders, and exclusive boutique drops across devices.</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_catalog">Shop</string>
+    <string name="nav_bag">Bag</string>
+    <string name="nav_account">Account</string>
+    <string name="nav_admin">Admin</string>
+    <string name="nav_track_order">Track Order</string>
+    <string name="nav_notifications">Updates</string>
+    <string name="nav_support">Support</string>
+    <string name="notif_channel_orders_name">Order &amp; Delivery Updates</string>
+    <string name="notif_channel_orders_desc">Real-time notifications for order placement, payment verification, dispatch, and delivery.</string>
+    <string name="notif_channel_promos_name">Style Drops &amp; Promotions</string>
+    <string name="notif_channel_promos_desc">Optional boutique arrivals and special promotional announcements.</string>
+    <string name="error_generic_load">Unable to load boutique data right now. Please try again.</string>
+</resources>
