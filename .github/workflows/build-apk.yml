@@ -117,7 +117,7 @@ jobs:
             gradle :app:assembleDebug --no-daemon --stacktrace
           fi
 
-      - name: Verify Android Debug APK was generated
+      - name: Verify Android Debug APK and Firebase resource generation
         run: |
           APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
           if [ ! -s "$APK_PATH" ]; then
@@ -125,6 +125,16 @@ jobs:
             exit 1
           fi
           ls -lh "$APK_PATH"
+          if [ ! -s app/google-services.json ]; then
+            echo "::warning::app/google-services.json is missing from the repository; Google Services resources (default_web_client_id) were not bundled."
+          else
+            GENERATED_GS_VALUES="app/build/generated/res/processDebugGoogleServices/values/values.xml"
+            if [ -s "$GENERATED_GS_VALUES" ] && grep -q 'name="default_web_client_id"' "$GENERATED_GS_VALUES"; then
+              echo "Verified generated default_web_client_id in $GENERATED_GS_VALUES"
+            else
+              echo "::warning::default_web_client_id was not generated in $GENERATED_GS_VALUES; verify app/google-services.json matches applicationId and includes an OAuth web client (client_type 3)."
+            fi
+          fi
 
       - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4

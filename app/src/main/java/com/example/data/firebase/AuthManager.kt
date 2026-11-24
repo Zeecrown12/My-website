@@ -9,7 +9,6 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.example.R
 import com.example.data.auth.AuthValidation
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -34,7 +33,19 @@ import kotlinx.coroutines.withContext
 
 object AuthManager {
     private const val TAG = "Auth"
+    private const val DEFAULT_WEB_CLIENT_ID_RES = "default_web_client_id"
     const val BOOTSTRAPPED_ADMIN_EMAIL = "olaademi.ZO@gmail.com"
+
+    fun resolveWebClientId(context: Context): String? {
+        val resources = context.resources
+        val resId = resources.getIdentifier(DEFAULT_WEB_CLIENT_ID_RES, "string", context.packageName)
+            .takeIf { it != 0 }
+            ?: resources.getIdentifier(DEFAULT_WEB_CLIENT_ID_RES, "string", "com.example")
+        if (resId == 0) return null
+        return runCatching { context.getString(resId).trim() }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
 
     fun isBootstrappedAdmin(user: FirebaseUser?): Boolean {
         if (user == null) return false
@@ -196,9 +207,9 @@ object AuthManager {
             onAuthSuccess()
             return
         }
-        val clientId = try {
-            context.getString(R.string.default_web_client_id)
-        } catch (_: Exception) {
+        val clientId = resolveWebClientId(context)
+        if (clientId == null) {
+            Log.w(TAG, "Skipping Google auto sign-in: default_web_client_id resource unavailable.")
             onUnauthenticated()
             return
         }
@@ -235,9 +246,8 @@ object AuthManager {
         scope: CoroutineScope,
         onAuthCancelled: () -> Unit = {},
     ) {
-        val clientId = try {
-            context.getString(R.string.default_web_client_id)
-        } catch (_: Exception) {
+        val clientId = resolveWebClientId(context)
+        if (clientId == null) {
             onAuthError("Google Sign-In configuration missing.")
             return
         }

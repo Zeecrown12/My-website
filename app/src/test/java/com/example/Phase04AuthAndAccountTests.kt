@@ -246,4 +246,12 @@ class Phase04AuthAndAccountTests {
         assertTrue(clearedCart.isEmpty())
         assertTrue(clearedWish.isEmpty())
     }
+
+    @Test
+    fun `auth manager resolves generated google web client id from android resources`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val clientId = com.example.data.firebase.AuthManager.resolveWebClientId(context)
+        assertNotNull(clientId)
+        assertTrue(clientId!!.endsWith(".apps.googleusercontent.com"))
+    }
 }
