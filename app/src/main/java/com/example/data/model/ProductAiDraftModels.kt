@@ -1,7 +1,5 @@
 package com.example.data.model
 
-import org.json.JSONArray
-import org.json.JSONObject
 import java.util.Locale
 
 data class ProductAiSuggestion(
@@ -64,7 +62,7 @@ object ProductDraftAiParser {
                 .removePrefix("```")
                 .removeSuffix("```")
                 .trim()
-            val obj = JSONObject(cleanJson)
+            val obj = MiniJsonParser(cleanJson).parseObject()
 
             val warnings = mutableListOf<String>()
 
@@ -79,11 +77,13 @@ object ProductDraftAiParser {
                 return value.take(maxLen)
             }
 
+            fun optString(key: String): String = obj[key] as? String ?: ""
+
             fun readStringArray(key: String, maxItems: Int, itemMaxLen: Int): List<String> {
-                val arr: JSONArray = obj.optJSONArray(key) ?: return emptyList()
+                val arr = obj[key] as? List<*> ?: return emptyList()
                 val out = mutableListOf<String>()
-                for (i in 0 until arr.length()) {
-                    val item = sanitizeText(arr.optString(i).orEmpty(), itemMaxLen)
+                for (raw in arr) {
+                    val item = sanitizeText(raw?.toString().orEmpty(), itemMaxLen)
                     if (item.isNotBlank() && out.none { it.equals(item, ignoreCase = true) }) {
                         out += item
                     }
@@ -92,21 +92,21 @@ object ProductDraftAiParser {
                 return out
             }
 
-            val rawTitle = sanitizeText(obj.optString("suggestedTitle"), 120)
-            val rawSummary = sanitizeText(obj.optString("summary"), 300)
-            val rawDescription = sanitizeText(obj.optString("description"), 2000)
+            val rawTitle = sanitizeText(optString("suggestedTitle"), 120)
+            val rawSummary = sanitizeText(optString("summary"), 300)
+            val rawDescription = sanitizeText(optString("description"), 2000)
             val visibleFeatures = readStringArray("visibleFeatures", maxItems = 10, itemMaxLen = 140)
             val rawColors = readStringArray("visibleColors", maxItems = 12, itemMaxLen = 40)
-            val fashionStyle = sanitizeText(obj.optString("fashionStyle"), 80)
+            val fashionStyle = sanitizeText(optString("fashionStyle"), 80)
             val occasions = readStringArray("suitableOccasions", maxItems = 8, itemMaxLen = 60)
-            val rawSeoTitle = sanitizeText(obj.optString("seoTitle"), 120)
-            val rawSeoDesc = sanitizeText(obj.optString("seoDescription"), 300)
+            val rawSeoTitle = sanitizeText(optString("seoTitle"), 120)
+            val rawSeoDesc = sanitizeText(optString("seoDescription"), 300)
             val searchKeywords = readStringArray("searchKeywords", maxItems = 15, itemMaxLen = 40)
             val tags = readStringArray("tags", maxItems = 15, itemMaxLen = 40)
             val uncertainNotes = readStringArray("uncertainDetails", maxItems = 8, itemMaxLen = 140)
 
-            val rawCatHint = obj.optString("suggestedCategoryName").trim()
-            val rawCatIdHint = obj.optString("suggestedCategoryId").trim()
+            val rawCatHint = optString("suggestedCategoryName").trim()
+            val rawCatIdHint = optString("suggestedCategoryId").trim()
             val matchedCategory = resolveMatchingCategory(
                 categories = categories,
                 idHint = rawCatIdHint,
@@ -177,3 +177,134 @@ object ProductDraftAiParser {
         }
     }
 }
+
+private class MiniJsonParser(raw: String) {
+    private val src: String = run {
+        val start = raw.indexOf('{')
+        val end = raw.lastIndexOf('}')
+        if (start >= 0 && end >= start) raw.substring(start, end + 1) else raw
+    }
+    private var idx = 0
+
+    fun parseObject(): Map<String, Any?> {
+        skipWhitespace()
+        expect('{')
+        val map = linkedMapOf<String, Any?>()
+        skipWhitespace()
+        if (peek() == '}') {
+            idx++
+            return map
+        }
+        while (idx < src.length) {
+            skipWhitespace()
+            val key = parseString()
+            skipWhitespace()
+            expect(':')
+            val value = parseValue()
+            map[key] = value
+            skipWhitespace()
+            when (peek()) {
+                ',' -> idx++
+                '}' -> {
+                    idx++
+                    return map
+                }
+                else -> error("Unexpected character '${peek()}' in JSON object at $idx")
+            }
+        }
+        error("Unterminated JSON object")
+    }
+
+    private fun parseArray(): List<Any?> {
+        expect('[')
+        val list = mutableListOf<Any?>()
+        skipWhitespace()
+        if (peek() == ']') {
+            idx++
+            return list
+        }
+        while (idx < src.length) {
+            list += parseValue()
+            skipWhitespace()
+            when (peek()) {
+                ',' -> idx++
+                ']' -> {
+                    idx++
+                    return list
+                }
+                else -> error("Unexpected character '${peek()}' in JSON array at $idx")
+            }
+        }
+        error("Unterminated JSON array")
+    }
+
+    private fun parseValue(): Any? {
+        skipWhitespace()
+        return when (val ch = peek()) {
+            '{' -> parseObject()
+            '[' -> parseArray()
+            '"' -> parseString()
+            't' -> consumeLiteral("true", true)
+            'f' -> consumeLiteral("false", false)
+            'n' -> consumeLiteral("null", null)
+            '-', in '0'..'9' -> parseNumber()
+            else -> error("Unexpected character '$ch' in JSON at $idx")
+        }
+    }
+
+    private fun parseString(): String {
+        expect('"')
+        val sb = StringBuilder()
+        while (idx < src.length) {
+            val ch = src[idx++]
+            if (ch == '"') return sb.toString()
+            if (ch == '\\') {
+                if (idx >= src.length) error("Unterminated escape in JSON string")
+                when (val esc = src[idx++]) {
+                    '"', '\\', '/' -> sb.append(esc)
+                    'b' -> sb.append('\b')
+                    'f' -> sb.append('\u000C')
+                    'n' -> sb.append('\n')
+                    'r' -> sb.append('\r')
+                    't' -> sb.append('\t')
+                    'u' -> {
+                        val hex = src.substring(idx, (idx + 4).coerceAtMost(src.length))
+                        sb.append(hex.toInt(16).toChar())
+                        idx += 4
+                    }
+                    else -> sb.append(esc)
+                }
+            } else {
+                sb.append(ch)
+            }
+        }
+        error("Unterminated JSON string")
+    }
+
+    private fun parseNumber(): Number {
+        val start = idx
+        while (idx < src.length && src[idx] in "0123456789+-.eE") idx++
+        val token = src.substring(start, idx)
+        return token.toLongOrNull() ?: token.toDouble()
+    }
+
+    private fun <T> consumeLiteral(lit: String, result: T): T {
+        if (!src.startsWith(lit, idx)) error("Expected '$lit' at $idx")
+        idx += lit.length
+        return result
+    }
+
+    private fun skipWhitespace() {
+        while (idx < src.length && src[idx].isWhitespace()) idx++
+    }
+
+    private fun peek(): Char = if (idx < src.length) src[idx] else '\u0000'
+
+    private fun expect(expected: Char) {
+        if (idx >= src.length || src[idx] != expected) {
+            error("Expected '$expected' at $idx")
+        }
+        idx++
+    }
+}
+

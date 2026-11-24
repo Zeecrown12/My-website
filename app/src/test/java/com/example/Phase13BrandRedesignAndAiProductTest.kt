@@ -122,7 +122,7 @@ class Phase13BrandRedesignAndAiProductTest {
             ),
         )
         val intent = AiKnowledgeRetrievalEngine.analyzeAndRetrieve("What is your refund policy?", snapshot)
-        val prompt = AiKnowledgeRetrievalEngine.buildGroundedModelPrompt("What is your refund policy?", intent, snapshot)
+        val prompt = intent.groundedContextForModel
 
         assertTrue(prompt.contains("does not accept customer returns or refunds", ignoreCase = true))
         assertFalse(prompt.contains("7-day", ignoreCase = true))

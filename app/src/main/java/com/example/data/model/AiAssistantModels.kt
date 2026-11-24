@@ -881,7 +881,7 @@ object AiKnowledgeRetrievalEngine {
         }
 
         // Security-first Order Status handling
-        if (intent.asksAboutOrders && !intent.indicatesComplaintOrDispute) {
+        if (intent.asksAboutOrders && !intent.indicatesComplaintOrDispute && (!intent.asksAboutReturns || intent.mentionedOrderNumber != null)) {
             if (!snapshot.isSignedIn) {
                 return AiChatMessage(
                     id = "ai_${System.currentTimeMillis()}",
@@ -934,8 +934,8 @@ object AiKnowledgeRetrievalEngine {
             )
         }
 
-        // Explicit Human Handover or Complaint/Dispute
-        if (intent.asksForHuman || intent.indicatesComplaintOrDispute) {
+        // Explicit Human Handover or non-policy Complaint/Dispute
+        if (intent.asksForHuman || (intent.indicatesComplaintOrDispute && !intent.asksAboutReturns)) {
             val availabilityNote = if (cfg.humanSupportAvailable) {
                 "Our human specialists are currently online (${cfg.supportWorkingDays}, ${cfg.supportWorkingHours}). ${cfg.expectedResponseTimeMessage}"
             } else {
@@ -1051,7 +1051,7 @@ object AiKnowledgeRetrievalEngine {
                 id = "ai_${System.currentTimeMillis()}",
                 role = "ASSISTANT",
                 text = "ZEECROWN STORE Return & Refund Policy:\n\n$policy",
-                suggestHumanHandover = damagedOrWrong || lowerQ.contains("want a refund") || lowerQ.contains("want to return"),
+                suggestHumanHandover = damagedOrWrong || lowerQ.contains("want a refund") || lowerQ.contains("want to return") || lowerQ.contains("get a refund"),
                 escalationReason = if (damagedOrWrong) "Damaged or incorrect delivery issue" else "Order policy assistance",
                 actionLinks = listOf(AiActionLink("Customer Support", AiActionDestination.SUPPORT)),
                 detectedCategory = "Store Policy",
