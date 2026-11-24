@@ -1161,7 +1161,7 @@ service cloud.firestore {
 
     // 13b. Global Delivery Settings
     match /deliverySettings/{settingId} {
-      allow get: if isValidId(settingId) && (existing().visibility == 'public' || isAnyAdmin());
+      allow get: if isValidId(settingId) && ((resource == null && settingId == 'public') || (resource != null && existing().visibility == 'public') || isAnyAdmin());
       allow list: if resource.data.visibility == 'public' || isAnyAdmin();
 
       allow create, update: if isValidId(settingId) &&
@@ -1175,7 +1175,7 @@ service cloud.firestore {
 
     // 14. Store Settings
     match /storeSettings/{settingId} {
-      allow get: if isValidId(settingId) && (existing().visibility == 'public' || isAnyAdmin());
+      allow get: if isValidId(settingId) && ((resource == null && settingId == 'public') || (resource != null && existing().visibility == 'public') || isAnyAdmin());
       allow list: if resource.data.visibility == 'public' || isAnyAdmin();
 
       allow create, update: if isValidId(settingId) &&

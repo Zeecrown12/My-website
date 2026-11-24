@@ -1218,5 +1218,48 @@ test("Size guides: public reads active charts, drafts & writes restricted to adm
   await assertSucceeds(superDb.collection("sizeGuides").doc("sg_draft_1").delete());
 });
 
+test("Public singleton settings (storeSettings/public & deliverySettings/public) allow unseeded get while protecting admin-only docs", async () => {
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@example.com", email_verified: true }).firestore();
+  const superDb = adminContext().firestore();
+  const now = new Date(Date.now() - 2000);
+
+  // Unseeded singleton public docs must return empty snapshot without PERMISSION_DENIED
+  await assertSucceeds(unauthDb.collection("storeSettings").doc("public").get());
+  await assertSucceeds(unauthDb.collection("deliverySettings").doc("public").get());
+  await assertSucceeds(aliceDb.collection("storeSettings").doc("public").get());
+
+  // Non-public doc IDs remain strictly denied to non-admins even when unseeded
+  await assertFails(unauthDb.collection("storeSettings").doc("private").get());
+  await assertFails(unauthDb.collection("deliverySettings").doc("internal").get());
+
+  // Once seeded with visibility == 'public', guests and customers can read storeSettings/public
+  await assertSucceeds(
+    superDb.collection("storeSettings").doc("public").set({
+      storeName: "ZEECROWN STORE",
+      tagline: "Style That Speaks. Elegance That Lasts.",
+      logoPlaceholderText: "ZEECROWN",
+      visibility: "public",
+      updatedAt: now,
+    })
+  );
+  await assertSucceeds(unauthDb.collection("storeSettings").doc("public").get());
+
+  // Admin-only visibility document remains denied to guests/customers
+  await assertSucceeds(
+    superDb.collection("storeSettings").doc("admin_only").set({
+      storeName: "ZEECROWN INTERNAL",
+      tagline: "Internal",
+      logoPlaceholderText: "ZC",
+      visibility: "admin",
+      updatedAt: now,
+    })
+  );
+  await assertFails(unauthDb.collection("storeSettings").doc("admin_only").get());
+  await assertFails(aliceDb.collection("storeSettings").doc("admin_only").get());
+  await assertSucceeds(superDb.collection("storeSettings").doc("admin_only").get());
+});
+
+
 
 

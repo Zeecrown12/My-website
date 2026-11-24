@@ -273,8 +273,11 @@ class StorefrontViewModel(
     val aiDeliverySettingsState: StateFlow<DeliverySettings> = aiRepository.observeDeliverySettingsPublic()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), DeliverySettings())
 
-    val aiCouponsState: StateFlow<List<Coupon>> = aiRepository.observeActiveCoupons()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
+    val aiCouponsState: StateFlow<List<Coupon>> =
+        if (isSignedIn) aiRepository.observeActiveCoupons()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
+        else flowOf(emptyList<Coupon>())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
 
     val aiRecentConversationsState: StateFlow<List<AiConversation>> =
         if (isSignedIn) aiRepository.observeCustomerRecentConversations(currentUserId)
