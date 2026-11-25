@@ -88,14 +88,27 @@ jobs:
 
       - name: Prepare debug keystore and accept Android SDK licenses
         run: |
-          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
+          set -euo pipefail
+          if [ ! -s debug.keystore ] && [ -s debug.keystore.base64 ]; then
             echo "Decoding debug.keystore from committed debug.keystore.base64..."
-            base64 -d debug.keystore.base64 > debug.keystore
+            rm -f debug.keystore
+            if ! tr -d '[:space:]' < debug.keystore.base64 | base64 -d > debug.keystore; then
+              echo "Warning: Failed to decode debug.keystore.base64; falling back to temporary debug keystore."
+              rm -f debug.keystore
+            fi
+          fi
+          if [ -s debug.keystore ]; then
+            if ! keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey > /dev/null 2>&1; then
+              echo "Warning: Existing debug.keystore is invalid or missing alias androiddebugkey; regenerating temporary debug keystore."
+              rm -f debug.keystore
+            fi
           fi
           if [ ! -s debug.keystore ]; then
             echo "Generating temporary standard Android debug keystore via keytool..."
-            keytool -genkeypair -v \
+            rm -f debug.keystore
+            keytool -genkeypair \
               -keystore debug.keystore \
+              -storetype PKCS12 \
               -storepass android \
               -keypass android \
               -alias androiddebugkey \
@@ -105,6 +118,8 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
           test -s debug.keystore
+          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey > /dev/null
+          echo "Verified debug.keystore (alias androiddebugkey) for debugConfig."
           if [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           fi
