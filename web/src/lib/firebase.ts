@@ -21,8 +21,6 @@ export const FIRESTORE_DATABASE_ID =
 
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'olaademi.ZO@gmail.com';
 
-export const FUNCTIONS_BASE_URL = (import.meta.env.VITE_FUNCTIONS_BASE_URL || '').replace(/\/$/, '');
-
 const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);

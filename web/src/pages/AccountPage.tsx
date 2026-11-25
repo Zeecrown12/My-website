@@ -3,16 +3,18 @@ import { Link } from 'react-router-dom';
 import {
   addDoc,
   collection,
+  doc,
   getDocs,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from 'firebase/firestore';
-import { LogOut, Package, ShieldCheck, Trash2 } from 'lucide-react';
+import { Bell, LogOut, Package, ShieldCheck, Trash2 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { db } from '../lib/firebase';
-import { SupportEnquiry } from '../types/store';
-import { formatMoney, formatOrderStatus } from '../lib/formatters';
+import { StoreNotification, SupportEnquiry } from '../types/store';
+import { formatMoney, formatOrderStatus, resolveProductImageUrl } from '../lib/formatters';
 
 export function AccountPage() {
   const {
@@ -30,25 +32,51 @@ export function AccountPage() {
     signOut,
   } = useStore();
 
-  const [tab, setTab] = useState<'orders' | 'wishlist' | 'addresses' | 'support'>('orders');
+  const [tab, setTab] = useState<'orders' | 'notifications' | 'wishlist' | 'addresses' | 'support'>('orders');
   const [enquiries, setEnquiries] = useState<SupportEnquiry[]>([]);
+  const [notifications, setNotifications] = useState<StoreNotification[]>([]);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [supportStatus, setSupportStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    void getDocs(query(collection(db, 'supportEnquiries'), where('userId', '==', user.uid)))
-      .then((snap) => {
+    void Promise.all([
+      getDocs(query(collection(db, 'supportEnquiries'), where('userId', '==', user.uid))),
+      getDocs(query(collection(db, 'notifications'), where('userId', '==', user.uid))),
+    ])
+      .then(([enqSnap, notifSnap]) => {
         setEnquiries(
-          snap.docs.map((d) => ({
+          enqSnap.docs.map((d) => ({
             id: d.id,
             ...(d.data() as Omit<SupportEnquiry, 'id'>),
           }))
         );
+        setNotifications(
+          notifSnap.docs
+            .map((d) => ({
+              id: d.id,
+              ...(d.data() as Omit<StoreNotification, 'id'>),
+            }))
+            .reverse()
+        );
       })
       .catch(() => undefined);
   }, [user]);
+
+  const handleMarkNotificationRead = async (notifId: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', notifId), {
+        readFlag: true,
+        readAt: serverTimestamp(),
+      });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notifId ? { ...n, readFlag: true } : n))
+      );
+    } catch {
+      // ignore if read-only/offline
+    }
+  };
 
   if (!user) {
     return (
@@ -150,6 +178,13 @@ export function AccountPage() {
         </button>
         <button
           type="button"
+          className={`chip ${tab === 'notifications' ? 'active' : ''}`}
+          onClick={() => setTab('notifications')}
+        >
+          Updates ({notifications.filter((n) => !n.readFlag).length})
+        </button>
+        <button
+          type="button"
           className={`chip ${tab === 'wishlist' ? 'active' : ''}`}
           onClick={() => setTab('wishlist')}
         >
@@ -170,6 +205,46 @@ export function AccountPage() {
           Support ({enquiries.length})
         </button>
       </div>
+
+      {tab === 'notifications' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {notifications.length === 0 ? (
+            <div className="card" style={{ padding: 28, textAlign: 'center' }}>
+              <Bell size={30} color="#542080" style={{ marginBottom: 8 }} />
+              <h3>No Store Updates Yet</h3>
+              <p style={{ color: '#5C4B6E', margin: 0 }}>
+                Order confirmations, payment verifications, dispatch updates, and support replies appear here.
+              </p>
+            </div>
+          ) : (
+            notifications.map((n) => (
+              <div
+                key={n.id}
+                className="card"
+                style={{
+                  padding: 16,
+                  borderLeft: n.readFlag ? '3px solid #D9D9E0' : '4px solid #542080',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <strong>{n.title}</strong>
+                  <span className="tag-badge">{n.category}</span>
+                </div>
+                <p style={{ margin: '6px 0 10px', color: '#5C4B6E', fontSize: '0.9rem' }}>{n.body}</p>
+                {!n.readFlag && (
+                  <button
+                    type="button"
+                    className="zc-pill-btn"
+                    onClick={() => void handleMarkNotificationRead(n.id)}
+                  >
+                    Mark as Read
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {tab === 'orders' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -240,7 +315,7 @@ export function AccountPage() {
               return (
                 <div key={w.id} className="card" style={{ padding: 14 }}>
                   <img
-                    src={w.productImageUrl || '/assets/zeecrown-logo.jpg'}
+                    src={resolveProductImageUrl(w.productImageUrl)}
                     alt={w.productTitle}
                     style={{ width: '100%', aspectRatio: '4 / 5', objectFit: 'cover', borderRadius: 10 }}
                   />

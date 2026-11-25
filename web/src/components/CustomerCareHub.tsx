@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { MessageCircle, Send, Sparkles, X } from 'lucide-react';
+import { Send, Sparkles, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
-import { db, FUNCTIONS_BASE_URL } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import {
   buildWhatsAppLink,
   formatMoney,
@@ -23,6 +23,8 @@ export function CustomerCareHub() {
   const {
     user,
     products,
+    categories,
+    sizeGuides,
     deliveryZones,
     storeSettings,
     aiConfig,
@@ -78,17 +80,32 @@ export function CustomerCareHub() {
       return `Accepted payment methods: ${enabled.join(', ') || 'Standard Checkout'}. Both NGN (₦) and USD ($) currency displays are supported in the header.`;
     }
 
+    if (/size|sizing|fit|measure|chart|guide/.test(q)) {
+      if (sizeGuides.length > 0) {
+        const guides = sizeGuides
+          .slice(0, 4)
+          .map((g) => `• ${g.name} (${g.rows.length} sizes${g.fitNotes ? ` — ${g.fitNotes}` : ''})`)
+          .join('\n');
+        return `Live Size Guides available on product pages:\n${guides}\n\nOpen any piece to view full measurement charts, or chat with us on WhatsApp (${storeSettings.whatsappNumber || OFFICIAL_WHATSAPP_DISPLAY}) before ordering.`;
+      }
+      return `Please check the Size Guide button on any product page or message us on WhatsApp (${storeSettings.whatsappNumber || OFFICIAL_WHATSAPP_DISPLAY}) for exact fit guidance.`;
+    }
+
     if (/order|track|waybill/.test(q)) {
       return 'To check live order status securely, open the Track Order page with your Order Number and checkout email/phone (or tracking token), or sign in to view your Account Order History.';
     }
 
+    const normalized = q
+      .replace(/\bslipas\b|\bpam\b|\bpams\b|\bslides\b/g, 'slippers')
+      .replace(/\bgown\b|\bgowns\b|\bbubu\b|\bboubous\b/g, 'dress')
+      .replace(/\bbags\b|\bpurse\b|\bclutch\b/g, 'handbag');
+
+    const words = normalized.split(/\s+/).filter((w) => w.length >= 3);
     const matches = products
       .filter((p) => {
-        const hay = `${p.title} ${p.description} ${(p.tags || []).join(' ')} ${p.colors.join(' ')}`.toLowerCase();
-        return q
-          .split(/\s+/)
-          .filter((w) => w.length >= 3)
-          .some((w) => hay.includes(w));
+        const catName = categories.find((c) => c.id === p.categoryId)?.name || '';
+        const hay = `${p.title} ${p.description} ${catName} ${(p.tags || []).join(' ')} ${p.colors.join(' ')}`.toLowerCase();
+        return words.some((w) => hay.includes(w));
       })
       .slice(0, 3);
 
@@ -105,48 +122,20 @@ export function CustomerCareHub() {
     return `I can help with product recommendations, sizing guides, delivery zones, payment options, order tracking, or store policies. For direct human assistance, click "Chat with Us on WhatsApp" (${storeSettings.whatsappNumber || OFFICIAL_WHATSAPP_DISPLAY}).`;
   };
 
-  const handleSend = async (e: React.FormEvent) => {
+  const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || sending) return;
 
     setInput('');
-    setMessages((prev) => [...prev, { id: `u_${Date.now()}`, role: 'user', text: trimmed }]);
     setSending(true);
-
-    try {
-      const endpoint = FUNCTIONS_BASE_URL
-        ? `${FUNCTIONS_BASE_URL}/aiAssistantChat`
-        : '/api/ai/chat';
-      const token = user ? await user.getIdToken().catch(() => null) : null;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ query: trimmed, mode }),
-      });
-      if (res.ok) {
-        const data = (await res.json()) as { replyText?: string };
-        if (data.replyText) {
-          setMessages((prev) => [
-            ...prev,
-            { id: `a_${Date.now()}`, role: 'assistant', text: data.replyText! },
-          ]);
-          return;
-        }
-      }
-      throw new Error('Fallback to live Firestore-grounded local assistant');
-    } catch {
-      const reply = buildLocalGroundedReply(trimmed);
-      setMessages((prev) => [
-        ...prev,
-        { id: `a_${Date.now()}`, role: 'assistant', text: reply },
-      ]);
-    } finally {
-      setSending(false);
-    }
+    const reply = buildLocalGroundedReply(trimmed);
+    setMessages((prev) => [
+      ...prev,
+      { id: `u_${Date.now()}`, role: 'user', text: trimmed },
+      { id: `a_${Date.now() + 1}`, role: 'assistant', text: reply },
+    ]);
+    setSending(false);
   };
 
   const handleCreateSupportTicket = async (e: React.FormEvent) => {
@@ -190,17 +179,6 @@ export function CustomerCareHub() {
   return (
     <>
       <div className="zc-floating-stack">
-        <a
-          href={waUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="zc-pill-btn whatsapp"
-          style={{ boxShadow: '0 10px 26px rgba(53,16,82,0.22)' }}
-        >
-          <MessageCircle size={16} />
-          WhatsApp: {storeSettings.whatsappNumber || OFFICIAL_WHATSAPP_DISPLAY}
-        </a>
-
         <button
           type="button"
           className="btn"

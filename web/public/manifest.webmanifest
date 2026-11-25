@@ -1,0 +1,26 @@
+{
+  "name": "ZEECROWN STORE",
+  "short_name": "ZEECROWN",
+  "description": "Style That Speaks. Elegance That Lasts. Handcrafted luxury Abayas, Adire silk garments, leather slippers, and artisanal handbags.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FFFCF5",
+  "theme_color": "#542080",
+  "categories": ["shopping", "fashion", "lifestyle"],
+  "icons": [
+    {
+      "src": "/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

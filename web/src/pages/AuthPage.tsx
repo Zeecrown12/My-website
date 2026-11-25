@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
+  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -26,6 +27,21 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const formatAuthError = (err: unknown, fallback: string): string => {
+    const code = (err as { code?: string } | null)?.code || '';
+    if (code === 'auth/unauthorized-domain') {
+      const host = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+      return `Google Sign-In is blocked because "${host}" is not yet in Firebase Console → Authentication → Settings → Authorized domains. You can also sign in with Email & Password below.`;
+    }
+    if (code === 'auth/popup-blocked') {
+      return 'Sign-in popup was blocked by your browser. Please allow popups for this site or sign in with Email & Password.';
+    }
+    if (code === 'auth/popup-closed-by-user') {
+      return 'Google Sign-In window was closed before completing.';
+    }
+    return err instanceof Error ? err.message : fallback;
+  };
+
   const handleGoogle = async () => {
     setBusy(true);
     setError(null);
@@ -34,7 +50,7 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
       await signInWithPopup(auth, provider);
       navigate(redirectTo);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google Sign-In failed.');
+      setError(formatAuthError(err, 'Google Sign-In failed.'));
     } finally {
       setBusy(false);
     }
@@ -69,13 +85,14 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
           email: email.trim().slice(0, 200),
           updatedAt: serverTimestamp(),
         });
+        await sendEmailVerification(cred.user).catch(() => undefined);
         navigate(redirectTo);
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password);
         navigate(redirectTo);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed.');
+      setError(formatAuthError(err, 'Authentication failed.'));
     } finally {
       setBusy(false);
     }

@@ -8,6 +8,15 @@ export type AdminRole =
   | 'content_manager'
   | 'support_staff';
 
+export interface VariantConfig {
+  key: string;
+  size: string;
+  color: string;
+  sku?: string;
+  priceNgn?: number;
+  priceUsd?: number;
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -25,6 +34,8 @@ export interface Product {
   sizes: string[];
   colors: string[];
   unavailableVariants?: string[];
+  attributes?: Record<string, string>;
+  lowStockThreshold?: number;
   features?: string[];
   fashionStyle?: string;
   suitableOccasions?: string[];
@@ -68,17 +79,46 @@ export interface InventoryItem {
   stockQuantity: number;
   lowStockThreshold: number;
   reservedQuantity: number;
+  variantStock?: Record<string, number>;
   inStock: boolean;
+}
+
+export interface InventoryTransaction {
+  id: string;
+  productId: string;
+  productTitle: string;
+  sku: string;
+  variation?: string;
+  previousQty: number;
+  deltaQty: number;
+  newQty: number;
+  reason: string;
+  adminUid: string;
+  adminEmail: string;
+  createdAt?: unknown;
 }
 
 export interface DeliveryZone {
   id: string;
   name: string;
   region: string;
+  country?: string;
+  states?: string[];
   feeNgn: number;
   estimatedDays: string;
+  promotionNote?: string;
   active: boolean;
   sortOrder: number;
+}
+
+export interface DeliverySettings {
+  freeDeliveryThresholdNgn: number;
+  nationwideFlatFeeNgn?: number;
+  pickupEnabled: boolean;
+  pickupAddress?: string;
+  pickupHours?: string;
+  specialPromoNote?: string;
+  visibility?: string;
 }
 
 export interface SizeGuide {
@@ -103,6 +143,8 @@ export interface StoreSettings {
   supportEmail: string;
   supportPhone: string;
   whatsappNumber: string;
+  businessAddress?: string;
+  supportHours?: string;
   aboutText: string;
   shippingPolicy: string;
   returnPolicy: string;
@@ -111,12 +153,21 @@ export interface StoreSettings {
   defaultCurrency: CurrencyCode;
   usdRateNgn: number;
   paystackEnabled: boolean;
+  paystackPublicKey?: string;
   flutterwaveEnabled: boolean;
+  flutterwavePublicKey?: string;
   bankTransferEnabled: boolean;
   codEnabled: boolean;
+  guestCheckoutEnabled?: boolean;
+  maintenanceMode?: boolean;
+  maintenanceMessage?: string;
   bankName: string;
   accountName: string;
   accountNumber: string;
+  instagramHandle?: string;
+  instagramUrl?: string;
+  tiktokHandle?: string;
+  tiktokUrl?: string;
   freeDeliveryThresholdNgn?: number;
 }
 
@@ -192,18 +243,82 @@ export interface StoreOrder {
   shippingCity: string;
   shippingState: string;
   shippingCountry?: string;
+  lga?: string;
+  landmark?: string;
+  deliveryInstructions?: string;
   status: string;
   paymentMethod: 'PAYSTACK' | 'FLUTTERWAVE' | 'BANK_TRANSFER' | 'COD';
   paymentStatus: string;
+  internalNotes?: string;
+  cancellationRequestReason?: string;
+  cancellationStatus?: string;
+  refundedNgn?: number;
   customerEmail?: string;
   trackingToken?: string;
+  guestLookupHashEmail?: string;
+  guestLookupHashPhone?: string;
   courierName?: string;
   trackingReference?: string;
   trackingUrl?: string;
   estimatedDeliveryWindow?: string;
   deliveryStatus?: string;
+  deliveryNotes?: string;
   statusHistory?: OrderStatusHistoryEntry[];
   createdAt?: unknown;
+}
+
+export interface PaymentRecord {
+  id: string;
+  userId: string;
+  orderId: string;
+  orderNumber?: string;
+  customerName?: string;
+  provider: string;
+  reference: string;
+  amountNgn: number;
+  currency: CurrencyCode;
+  status: string;
+  transferNote?: string;
+  verificationNote?: string;
+  reviewedByEmail?: string;
+  reviewedAt?: unknown;
+  createdAt?: unknown;
+}
+
+export interface StoreNotification {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  category: string;
+  readFlag: boolean;
+  targetRoute?: string;
+  orderId?: string;
+  orderNumber?: string;
+  createdAt?: unknown;
+}
+
+export interface CustomerSummary {
+  id: string;
+  userId: string;
+  displayName: string;
+  firstName?: string;
+  lastName?: string;
+  preferredCurrency?: string;
+  role?: string;
+  emailVerified?: boolean;
+  supportNotes?: string;
+  createdAt?: unknown;
+}
+
+export interface CustomerPrivateInfo {
+  userId: string;
+  email: string;
+  phone?: string;
+  shippingAddress?: string;
+  city?: string;
+  state?: string;
+  country?: string;
 }
 
 export interface ProductReview {

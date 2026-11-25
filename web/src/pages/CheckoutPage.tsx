@@ -4,6 +4,48 @@ import { CheckCircle2, Lock } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { formatMoney, resolveEffectiveReturnPolicy } from '../lib/formatters';
 
+function loadExternalScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${src}"]`);
+    if (existing) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Unable to load payment script: ${src}`));
+    document.body.appendChild(script);
+  });
+}
+
+declare global {
+  interface Window {
+    PaystackPop?: {
+      setup: (opts: {
+        key: string;
+        email: string;
+        amount: number;
+        currency?: string;
+        ref: string;
+        callback: (res: { reference: string }) => void;
+        onClose: () => void;
+      }) => { openIframe: () => void };
+    };
+    FlutterwaveCheckout?: (opts: {
+      public_key: string;
+      tx_ref: string;
+      amount: number;
+      currency: string;
+      customer: { email: string; name: string; phone_number?: string };
+      customizations?: { title?: string; description?: string };
+      callback: (data: { transaction_id?: string | number; tx_ref?: string }) => void;
+      onclose: () => void;
+    }) => void;
+  }
+}
+
 export function CheckoutPage() {
   const {
     user,
@@ -14,6 +56,7 @@ export function CheckoutPage() {
     currency,
     saveAddress,
     placeOrder,
+    submitGatewayPaymentReference,
   } = useStore();
 
   const [selectedAddressId, setSelectedAddressId] = useState<string>('NEW');
@@ -190,6 +233,76 @@ export function CheckoutPage() {
         paymentMethod,
         transferNote,
       });
+
+      const paystackKey = (storeSettings.paystackPublicKey || '').trim();
+      const flutterwaveKey = (storeSettings.flutterwavePublicKey || '').trim();
+
+      if (paymentMethod === 'PAYSTACK' && paystackKey) {
+        try {
+          await loadExternalScript('https://js.paystack.co/v1/inline.js');
+          if (window.PaystackPop) {
+            await new Promise<void>((resolve) => {
+              const handler = window.PaystackPop!.setup({
+                key: paystackKey,
+                email: user.email || 'customer@zeecrownstore.com',
+                amount: Math.round(totalNgn * 100),
+                currency: 'NGN',
+                ref: `${result.orderNumber}-${Date.now()}`,
+                callback: (response) => {
+                  void submitGatewayPaymentReference({
+                    orderId: result.orderId,
+                    paymentId: result.paymentId,
+                    gatewayRef: response.reference || result.orderNumber,
+                    provider: 'PAYSTACK',
+                    trackingToken: result.trackingToken,
+                  }).finally(resolve);
+                },
+                onClose: () => resolve(),
+              });
+              handler.openIframe();
+            });
+          }
+        } catch {
+          // Order already recorded safely; customer can complete or verify from Account
+        }
+      } else if (paymentMethod === 'FLUTTERWAVE' && flutterwaveKey) {
+        try {
+          await loadExternalScript('https://checkout.flutterwave.com/v3.js');
+          if (window.FlutterwaveCheckout) {
+            await new Promise<void>((resolve) => {
+              window.FlutterwaveCheckout!({
+                public_key: flutterwaveKey,
+                tx_ref: `${result.orderNumber}-${Date.now()}`,
+                amount: Math.round(totalNgn),
+                currency: 'NGN',
+                customer: {
+                  email: user.email || 'customer@zeecrownstore.com',
+                  name: rName.trim(),
+                  phone_number: rPhone.trim(),
+                },
+                customizations: {
+                  title: storeSettings.storeName,
+                  description: `Order ${result.orderNumber}`,
+                },
+                callback: (data) => {
+                  const ref = String(data.transaction_id || data.tx_ref || result.orderNumber);
+                  void submitGatewayPaymentReference({
+                    orderId: result.orderId,
+                    paymentId: result.paymentId,
+                    gatewayRef: ref,
+                    provider: 'FLUTTERWAVE',
+                    trackingToken: result.trackingToken,
+                  }).finally(resolve);
+                },
+                onclose: () => resolve(),
+              });
+            });
+          }
+        } catch {
+          // Order already recorded safely
+        }
+      }
+
       setConfirmed({ orderNumber: result.orderNumber, trackingToken: result.trackingToken });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to place order.');
@@ -422,6 +535,24 @@ export function CheckoutPage() {
                     placeholder="e.g. GTBank transfer from Adaeze Ref #1234"
                   />
                 </div>
+              </div>
+            )}
+
+            {(paymentMethod === 'PAYSTACK' || paymentMethod === 'FLUTTERWAVE') && (
+              <div className="alert alert-info">
+                <strong>
+                  {paymentMethod === 'PAYSTACK' ? 'Paystack' : 'Flutterwave'} Checkout:
+                </strong>{' '}
+                {(paymentMethod === 'PAYSTACK' && storeSettings.paystackPublicKey) ||
+                (paymentMethod === 'FLUTTERWAVE' && storeSettings.flutterwavePublicKey)
+                  ? `Clicking Place Order will open the secure ${
+                      paymentMethod === 'PAYSTACK' ? 'Paystack' : 'Flutterwave'
+                    } checkout popup and record your payment reference for admin verification.`
+                  : `Placing this order records a pending ${
+                      paymentMethod === 'PAYSTACK' ? 'Paystack' : 'Flutterwave'
+                    } payment reference (UNPAID) in your order history for payment link / manual verification.`}{' '}
+                Third-party gateway processing fees apply to card or online gateway settlements;
+                Bank Transfer and Cash on Delivery carry zero gateway fees.
               </div>
             )}
           </div>

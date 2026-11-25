@@ -19,6 +19,7 @@ import {
   resolveEffectiveReturnPolicy,
 } from '../lib/formatters';
 import { SizeGuideModal } from '../components/SizeGuideModal';
+import { resolveVariantDetails } from '../lib/variants';
 
 export function ProductDetailPage() {
   const { slugOrId } = useParams<{ slugOrId: string }>();
@@ -104,11 +105,16 @@ export function ProductDetailPage() {
 
   const category = categories.find((c) => c.id === product.categoryId);
   const inv = inventoryByProduct[product.id];
-  const outOfStock = inv ? !inv.inStock || inv.stockQuantity <= 0 : false;
-  const variantLabel = [selectedSize, selectedColor].filter(Boolean).join(' · ') || 'Standard';
-  const variantUnavailable = (product.unavailableVariants || []).some(
-    (v) => v.toLowerCase() === variantLabel.toLowerCase() || v.toLowerCase() === selectedSize.toLowerCase()
+  const resolvedVariant = resolveVariantDetails(
+    product,
+    inv,
+    selectedSize,
+    selectedColor,
+    storeSettings.usdRateNgn
   );
+  const variantLabel = resolvedVariant.key;
+  const outOfStock = resolvedVariant.stockQuantity !== null ? resolvedVariant.stockQuantity <= 0 : false;
+  const variantUnavailable = !resolvedVariant.available;
 
   const matchedSizeGuide =
     sizeGuides.find((g) => g.id === product.sizeGuideId) ||
@@ -124,7 +130,7 @@ export function ProductDetailPage() {
 
   const handleAdd = async () => {
     if (outOfStock || variantUnavailable) return;
-    await addToCart(product, variantLabel, qty);
+    await addToCart(product, variantLabel, qty, resolvedVariant.priceNgn);
     setAddedBanner(true);
     setTimeout(() => setAddedBanner(false), 2500);
   };
@@ -243,16 +249,26 @@ export function ProductDetailPage() {
           {category && <span className="product-cat">{category.name}</span>}
           <h1 style={{ marginTop: 6, marginBottom: 10 }}>{product.title}</h1>
 
-          <div className="price-row" style={{ marginBottom: 14 }}>
+          <div className="price-row" style={{ marginBottom: 8 }}>
             <span className="price-now" style={{ fontSize: '1.5rem' }}>
-              {formatMoney(product.priceNgn, currency, product.priceUsd, storeSettings.usdRateNgn)}
+              {formatMoney(
+                resolvedVariant.priceNgn,
+                currency,
+                resolvedVariant.priceUsd,
+                storeSettings.usdRateNgn
+              )}
             </span>
-            {product.compareAtPriceNgn && product.compareAtPriceNgn > product.priceNgn && (
+            {product.compareAtPriceNgn && product.compareAtPriceNgn > resolvedVariant.priceNgn && (
               <span className="price-was">
                 {formatMoney(product.compareAtPriceNgn, currency, undefined, storeSettings.usdRateNgn)}
               </span>
             )}
           </div>
+          {resolvedVariant.sku && (
+            <div style={{ fontSize: '0.8rem', color: '#5C4B6E', marginBottom: 14 }}>
+              SKU: <strong>{resolvedVariant.sku}</strong>
+            </div>
+          )}
 
           <p style={{ color: '#1F122B', marginBottom: 16 }}>{product.description}</p>
 
@@ -338,9 +354,11 @@ export function ProductDetailPage() {
                 border: '1px solid #D9D9E0',
               }}
             />
-            {inv && (
+            {resolvedVariant.stockQuantity !== null && (
               <span style={{ fontSize: '0.84rem', color: outOfStock ? '#9E2A3B' : '#1D6B45', fontWeight: 600 }}>
-                {outOfStock ? 'Currently Out of Stock' : `${inv.stockQuantity} in stock`}
+                {outOfStock
+                  ? 'Currently Out of Stock'
+                  : `${resolvedVariant.stockQuantity} in stock${resolvedVariant.hasVariantStock ? ` (${variantLabel})` : ''}`}
               </span>
             )}
           </div>

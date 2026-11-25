@@ -25,6 +25,7 @@ import {
   Category,
   CurrencyCode,
   DeliveryAddress,
+  DeliverySettings,
   DeliveryZone,
   InventoryItem,
   Product,
@@ -43,8 +44,11 @@ import {
 } from '../lib/firebase';
 import {
   NO_RETURNS_POLICY_DEFAULT,
+  OFFICIAL_STORE_EMAIL,
   OFFICIAL_WHATSAPP_DISPLAY,
   resolveEffectiveReturnPolicy,
+  resolveEffectiveSupportEmail,
+  resolveProductImageUrl,
 } from '../lib/formatters';
 
 interface PlaceOrderInput {
@@ -73,9 +77,12 @@ interface StoreContextValue {
   products: Product[];
   allProducts: Product[];
   categories: Category[];
+  allCategories: Category[];
   collections: StoreCollection[];
   inventoryByProduct: Record<string, InventoryItem>;
   deliveryZones: DeliveryZone[];
+  allDeliveryZones: DeliveryZone[];
+  deliverySettings: DeliverySettings;
   sizeGuides: SizeGuide[];
   storeSettings: StoreSettings;
   aiConfig: AiAssistantConfig;
@@ -85,7 +92,12 @@ interface StoreContextValue {
   wishlist: WishlistItem[];
   orders: StoreOrder[];
   addresses: DeliveryAddress[];
-  addToCart: (product: Product, variantLabel: string, qty?: number) => Promise<void>;
+  addToCart: (
+    product: Product,
+    variantLabel: string,
+    qty?: number,
+    unitPriceOverrideNgn?: number
+  ) => Promise<void>;
   updateCartQty: (itemId: string, qty: number) => Promise<void>;
   removeFromCart: (itemId: string) => Promise<void>;
   clearCart: () => Promise<void>;
@@ -93,15 +105,24 @@ interface StoreContextValue {
   isWishlisted: (productId: string) => boolean;
   saveAddress: (address: Omit<DeliveryAddress, 'id' | 'userId'>) => Promise<void>;
   deleteAddress: (addressId: string) => Promise<void>;
-  placeOrder: (input: PlaceOrderInput) => Promise<{ orderNumber: string; orderId: string; trackingToken: string }>;
+  placeOrder: (
+    input: PlaceOrderInput
+  ) => Promise<{ orderNumber: string; orderId: string; paymentId: string; trackingToken: string }>;
+  submitGatewayPaymentReference: (params: {
+    orderId: string;
+    paymentId: string;
+    gatewayRef: string;
+    provider: 'PAYSTACK' | 'FLUTTERWAVE';
+    trackingToken?: string;
+  }) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshCatalog: () => Promise<void>;
+  refreshCatalog: (includeInactiveForAdmin?: boolean) => Promise<void>;
 }
 
 const DEFAULT_SETTINGS: StoreSettings = {
   storeName: 'ZEECROWN STORE',
   tagline: 'Style That Speaks. Elegance That Lasts.',
-  supportEmail: 'olaademi.ZO@gmail.com',
+  supportEmail: OFFICIAL_STORE_EMAIL,
   supportPhone: OFFICIAL_WHATSAPP_DISPLAY,
   whatsappNumber: OFFICIAL_WHATSAPP_DISPLAY,
   aboutText:
@@ -116,12 +137,23 @@ const DEFAULT_SETTINGS: StoreSettings = {
   defaultCurrency: 'NGN',
   usdRateNgn: 1600,
   paystackEnabled: true,
+  paystackPublicKey: '',
   flutterwaveEnabled: false,
+  flutterwavePublicKey: '',
   bankTransferEnabled: true,
   codEnabled: true,
+  guestCheckoutEnabled: true,
+  maintenanceMode: false,
+  maintenanceMessage: '',
+  businessAddress: 'Lekki Phase 1, Lagos, Nigeria',
+  supportHours: 'Mon – Sat · 9:00 AM – 6:00 PM WAT',
   bankName: 'ZEECROWN STORE Boutique Account',
   accountName: 'ZEECROWN STORE',
   accountNumber: 'Confirm via Checkout / WhatsApp',
+  instagramHandle: '@zeecrownstore',
+  instagramUrl: '',
+  tiktokHandle: '@zeecrownstore',
+  tiktokUrl: '',
   freeDeliveryThresholdNgn: 150000,
 };
 
@@ -159,6 +191,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [collections, setCollections] = useState<StoreCollection[]>([]);
   const [inventoryByProduct, setInventoryByProduct] = useState<Record<string, InventoryItem>>({});
   const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
+  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
+    freeDeliveryThresholdNgn: 150000,
+    pickupEnabled: false,
+    pickupAddress: '',
+    pickupHours: '',
+    specialPromoNote: '',
+    visibility: 'public',
+  });
   const [sizeGuides, setSizeGuides] = useState<SizeGuide[]>([]);
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(DEFAULT_SETTINGS);
   const [aiConfig, setAiConfig] = useState<AiAssistantConfig>(DEFAULT_AI_CONFIG);
@@ -191,10 +231,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loadCatalogSnapshot = async () => {
+  const loadCatalogSnapshot = async (includeInactiveForAdmin = adminRole !== 'none') => {
     setCatalogLoading(true);
     setCatalogError(null);
     try {
+      const productsQuery = includeInactiveForAdmin
+        ? collection(db, 'products')
+        : query(collection(db, 'products'), where('active', '==', true));
+      const categoriesQuery = includeInactiveForAdmin
+        ? collection(db, 'categories')
+        : query(collection(db, 'categories'), where('active', '==', true));
+      const inventoryQuery = includeInactiveForAdmin
+        ? collection(db, 'inventory')
+        : query(collection(db, 'inventory'), where('inStock', '==', true));
+      const zonesQuery = includeInactiveForAdmin
+        ? collection(db, 'deliveryZones')
+        : query(collection(db, 'deliveryZones'), where('active', '==', true));
       const [
         prodSnap,
         catSnap,
@@ -204,19 +256,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         sgSnap,
         settingsSnap,
         aiSnap,
+        delivSetSnap,
       ] = await Promise.all([
-        getDocs(query(collection(db, 'products'), where('active', '==', true))),
-        getDocs(query(collection(db, 'categories'), where('active', '==', true))).catch(() => null),
+        getDocs(productsQuery),
+        getDocs(categoriesQuery).catch(() => null),
         getDocs(query(collection(db, 'collections'), where('active', '==', true))).catch(() => null),
-        getDocs(query(collection(db, 'inventory'), where('inStock', '==', true))).catch(() => null),
-        getDocs(query(collection(db, 'deliveryZones'), where('active', '==', true))).catch(() => null),
+        getDocs(inventoryQuery).catch(() => null),
+        getDocs(zonesQuery).catch(() => null),
         getDocs(query(collection(db, 'sizeGuides'), where('active', '==', true))).catch(() => null),
         getDoc(doc(db, 'storeSettings', 'public')).catch(() => null),
         getDoc(doc(db, 'aiConfig', 'public')).catch(() => null),
+        getDoc(doc(db, 'deliverySettings', 'public')).catch(() => null),
       ]);
 
       const prods: Product[] = prodSnap.docs.map((d) => {
         const data = d.data();
+        const rawAttrs =
+          data.attributes && typeof data.attributes === 'object'
+            ? Object.fromEntries(
+                Object.entries(data.attributes as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')])
+              )
+            : undefined;
         return {
           id: d.id,
           title: String(data.title || ''),
@@ -229,11 +289,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           priceNgn: Number(data.priceNgn || 0),
           compareAtPriceNgn: typeof data.compareAtPriceNgn === 'number' ? data.compareAtPriceNgn : undefined,
           priceUsd: Number(data.priceUsd || 0),
-          mainImageUrl: typeof data.mainImageUrl === 'string' ? data.mainImageUrl : undefined,
-          imageUrls: Array.isArray(data.imageUrls) ? data.imageUrls.map(String) : [],
+          mainImageUrl:
+            typeof data.mainImageUrl === 'string'
+              ? resolveProductImageUrl(data.mainImageUrl)
+              : undefined,
+          imageUrls: Array.isArray(data.imageUrls)
+            ? data.imageUrls.map((u) => resolveProductImageUrl(String(u)))
+            : [],
           sizes: Array.isArray(data.sizes) ? data.sizes.map(String) : [],
           colors: Array.isArray(data.colors) ? data.colors.map(String) : [],
           unavailableVariants: Array.isArray(data.unavailableVariants) ? data.unavailableVariants.map(String) : [],
+          attributes: rawAttrs,
+          lowStockThreshold: typeof data.lowStockThreshold === 'number' ? data.lowStockThreshold : 3,
           features: Array.isArray(data.features) ? data.features.map(String) : [],
           fashionStyle: typeof data.fashionStyle === 'string' ? data.fashionStyle : undefined,
           suitableOccasions: Array.isArray(data.suitableOccasions) ? data.suitableOccasions.map(String) : [],
@@ -292,6 +359,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         invSnap.docs.forEach((d) => {
           const data = d.data();
           const pid = String(data.productId || d.id);
+          const rawVariantStock =
+            data.variantStock && typeof data.variantStock === 'object'
+              ? Object.fromEntries(
+                  Object.entries(data.variantStock as Record<string, unknown>)
+                    .filter(([, v]) => typeof v === 'number')
+                    .map(([k, v]) => [k, Number(v)])
+                )
+              : undefined;
           map[pid] = {
             id: d.id,
             productId: pid,
@@ -299,6 +374,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             stockQuantity: Number(data.stockQuantity || 0),
             lowStockThreshold: Number(data.lowStockThreshold || 3),
             reservedQuantity: Number(data.reservedQuantity || 0),
+            variantStock: rawVariantStock,
             inStock: data.inStock === true,
           };
         });
@@ -310,19 +386,37 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           zoneSnap.docs
             .map((d) => {
               const data = d.data();
-              const statesText = Array.isArray(data.states) ? data.states.filter(Boolean).join(', ') : '';
+              const statesArr = Array.isArray(data.states) ? data.states.map(String).filter(Boolean) : [];
+              const statesText = statesArr.join(', ');
               return {
                 id: d.id,
                 name: String(data.name || ''),
                 region: String(data.region || statesText || data.country || 'Nigeria'),
+                country: typeof data.country === 'string' ? data.country : 'Nigeria',
+                states: statesArr,
                 feeNgn: Number(data.feeNgn || 0),
                 estimatedDays: String(data.estimatedDays || '2–5 business days'),
+                promotionNote: typeof data.promotionNote === 'string' ? data.promotionNote : undefined,
                 active: data.active !== false,
                 sortOrder: Number(data.sortOrder || 0),
               };
             })
             .sort((a, b) => a.sortOrder - b.sortOrder || a.feeNgn - b.feeNgn)
         );
+      }
+
+      if (delivSetSnap && delivSetSnap.exists()) {
+        const ds = delivSetSnap.data();
+        setDeliverySettings({
+          freeDeliveryThresholdNgn: Number(ds.freeDeliveryThresholdNgn || 0),
+          nationwideFlatFeeNgn:
+            typeof ds.nationwideFlatFeeNgn === 'number' ? ds.nationwideFlatFeeNgn : undefined,
+          pickupEnabled: ds.pickupEnabled === true,
+          pickupAddress: typeof ds.pickupAddress === 'string' ? ds.pickupAddress : '',
+          pickupHours: typeof ds.pickupHours === 'string' ? ds.pickupHours : '',
+          specialPromoNote: typeof ds.specialPromoNote === 'string' ? ds.specialPromoNote : '',
+          visibility: typeof ds.visibility === 'string' ? ds.visibility : 'public',
+        });
       }
 
       if (sgSnap) {
@@ -362,9 +456,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ...DEFAULT_SETTINGS,
           storeName: String(s.storeName || DEFAULT_SETTINGS.storeName),
           tagline: String(s.tagline || DEFAULT_SETTINGS.tagline),
-          supportEmail: String(s.supportEmail || DEFAULT_SETTINGS.supportEmail),
+          supportEmail: resolveEffectiveSupportEmail(
+            typeof s.supportEmail === 'string' ? s.supportEmail : ''
+          ),
           supportPhone: String(s.supportPhone || OFFICIAL_WHATSAPP_DISPLAY),
           whatsappNumber: String(s.whatsappNumber || OFFICIAL_WHATSAPP_DISPLAY),
+          businessAddress: String(s.businessAddress || DEFAULT_SETTINGS.businessAddress || ''),
+          supportHours: String(s.supportHours || DEFAULT_SETTINGS.supportHours || ''),
           aboutText: String(s.aboutText || DEFAULT_SETTINGS.aboutText),
           shippingPolicy: String(s.shippingPolicy || DEFAULT_SETTINGS.shippingPolicy),
           returnPolicy: resolveEffectiveReturnPolicy(typeof s.returnPolicy === 'string' ? s.returnPolicy : ''),
@@ -373,12 +471,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           defaultCurrency: s.defaultCurrency === 'USD' ? 'USD' : 'NGN',
           usdRateNgn: Number(s.usdRateNgn || 1600),
           paystackEnabled: s.paystackEnabled !== false,
+          paystackPublicKey: typeof s.paystackPublicKey === 'string' ? s.paystackPublicKey : '',
           flutterwaveEnabled: s.flutterwaveEnabled === true,
+          flutterwavePublicKey: typeof s.flutterwavePublicKey === 'string' ? s.flutterwavePublicKey : '',
           bankTransferEnabled: s.bankTransferEnabled !== false,
           codEnabled: s.codEnabled !== false,
+          guestCheckoutEnabled: s.guestCheckoutEnabled !== false,
+          maintenanceMode: s.maintenanceMode === true,
+          maintenanceMessage: typeof s.maintenanceMessage === 'string' ? s.maintenanceMessage : '',
           bankName: String(s.bankName || DEFAULT_SETTINGS.bankName),
           accountName: String(s.accountName || DEFAULT_SETTINGS.accountName),
           accountNumber: String(s.accountNumber || DEFAULT_SETTINGS.accountNumber),
+          instagramHandle: typeof s.instagramHandle === 'string' ? s.instagramHandle : DEFAULT_SETTINGS.instagramHandle,
+          instagramUrl: typeof s.instagramUrl === 'string' ? s.instagramUrl : '',
+          tiktokHandle: typeof s.tiktokHandle === 'string' ? s.tiktokHandle : DEFAULT_SETTINGS.tiktokHandle,
+          tiktokUrl: typeof s.tiktokUrl === 'string' ? s.tiktokUrl : '',
           freeDeliveryThresholdNgn:
             typeof s.freeDeliveryThresholdNgn === 'number'
               ? s.freeDeliveryThresholdNgn
@@ -446,18 +553,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       try {
         // Resolve admin role matching firestore.rules
+        let resolvedRole: AdminRole | 'none' = 'none';
         if (
           nextUser.emailVerified &&
           nextUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()
         ) {
-          setAdminRole('super_admin');
+          resolvedRole = 'super_admin';
         } else {
           const adminSnap = await getDoc(doc(db, 'adminUsers', nextUser.uid)).catch(() => null);
           if (adminSnap?.exists() && adminSnap.data()?.active === true) {
-            setAdminRole((adminSnap.data()?.role || 'none') as AdminRole);
-          } else {
-            setAdminRole('none');
+            resolvedRole = (adminSnap.data()?.role || 'none') as AdminRole;
           }
+        }
+        setAdminRole(resolvedRole);
+        if (resolvedRole !== 'none') {
+          void loadCatalogSnapshot(true);
         }
 
         // Ensure users/{uid} profile + private info exist cleanly
@@ -583,16 +693,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const addToCart = async (product: Product, variantLabel: string, qty = 1) => {
+  const addToCart = async (
+    product: Product,
+    variantLabel: string,
+    qty = 1,
+    unitPriceOverrideNgn?: number
+  ) => {
     const cleanVariant = (variantLabel || 'Standard').slice(0, 80);
     const safeDocId = `${product.id}_${cleanVariant.replace(/[^a-zA-Z0-9_-]/g, '_')}`.slice(0, 120);
     const imageUrl = (product.mainImageUrl || product.imageUrls[0] || '').slice(0, 600);
+    const effectiveUnitPrice =
+      typeof unitPriceOverrideNgn === 'number' && unitPriceOverrideNgn >= 0
+        ? unitPriceOverrideNgn
+        : product.priceNgn;
 
     if (!user) {
       const existing = cart.find((c) => c.id === safeDocId);
       const next = existing
         ? cart.map((c) =>
-            c.id === safeDocId ? { ...c, quantity: Math.min(50, c.quantity + qty) } : c
+            c.id === safeDocId
+              ? { ...c, unitPriceNgn: effectiveUnitPrice, quantity: Math.min(50, c.quantity + qty) }
+              : c
           )
         : [
             ...cart,
@@ -603,7 +724,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               productTitle: product.title.slice(0, 120),
               productImageUrl: imageUrl,
               variantLabel: cleanVariant,
-              unitPriceNgn: product.priceNgn,
+              unitPriceNgn: effectiveUnitPrice,
               quantity: Math.max(1, Math.min(50, qty)),
             },
           ];
@@ -626,7 +747,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         productTitle: product.title.slice(0, 120),
         productImageUrl: imageUrl,
         variantLabel: cleanVariant,
-        unitPriceNgn: product.priceNgn,
+        unitPriceNgn: effectiveUnitPrice,
         quantity: Math.max(1, Math.min(50, qty)),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -874,10 +995,75 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setDoc(doc(db, 'orderTrackingLookups', lookupPhoneHash), projectionPayload).catch(() => undefined)
       );
     }
-    await Promise.all(projectionWrites);
+    await Promise.all([
+      ...projectionWrites,
+      setDoc(doc(db, 'notifications', `notif_order_placed_${orderRef.id}`), {
+        userId: user.uid,
+        title: 'Order Placed',
+        body: `Your order ${orderNumber} (₦${Math.round(totalNgn).toLocaleString('en-NG')}) has been placed.`,
+        category: 'ORDER',
+        readFlag: false,
+        targetRoute: `track_order/${orderRef.id}`,
+        orderId: orderRef.id,
+        orderNumber,
+        dedupeKey: `order_placed_${orderRef.id}`,
+        createdAt: serverTimestamp(),
+      }).catch(() => undefined),
+    ]);
 
     await clearCart();
-    return { orderNumber, orderId: orderRef.id, trackingToken };
+    return { orderNumber, orderId: orderRef.id, paymentId: paymentRef.id, trackingToken };
+  };
+
+  const submitGatewayPaymentReference = async ({
+    orderId,
+    paymentId,
+    gatewayRef,
+    provider,
+    trackingToken,
+  }: {
+    orderId: string;
+    paymentId: string;
+    gatewayRef: string;
+    provider: 'PAYSTACK' | 'FLUTTERWAVE';
+    trackingToken?: string;
+  }) => {
+    if (!user) return;
+    const cleanRef = gatewayRef.trim().slice(0, 260);
+    await updateDoc(doc(db, 'payments', paymentId), {
+      status: 'SUBMITTED',
+      transferNote: `${provider} Checkout Ref: ${cleanRef}`.slice(0, 300),
+      updatedAt: serverTimestamp(),
+    });
+    const orderRef = doc(db, 'orders', orderId);
+    const orderSnap = await getDoc(orderRef);
+    const existingHistory = Array.isArray(orderSnap.data()?.statusHistory)
+      ? (orderSnap.data()?.statusHistory as Array<Record<string, unknown>>)
+      : [];
+    const nextHistory = [
+      ...existingHistory.slice(-28),
+      {
+        stage: 'PAYMENT_SUBMITTED',
+        label: `${provider === 'PAYSTACK' ? 'Paystack' : 'Flutterwave'} Payment Completed`,
+        note: `Gateway reference ${cleanRef} submitted for admin confirmation.`,
+        actorRole: 'CUSTOMER',
+        timestampMillis: Date.now(),
+      },
+    ];
+    await updateDoc(orderRef, {
+      status: 'PAYMENT_SUBMITTED',
+      paymentStatus: 'PENDING_VERIFICATION',
+      statusHistory: nextHistory,
+      updatedAt: serverTimestamp(),
+    });
+    if (trackingToken) {
+      await updateDoc(doc(db, 'orderTrackingTokens', trackingToken), {
+        status: 'PAYMENT_SUBMITTED',
+        paymentStatus: 'PENDING_VERIFICATION',
+        statusHistory: nextHistory,
+        updatedAt: serverTimestamp(),
+      }).catch(() => undefined);
+    }
   };
 
   const signOut = async () => {
@@ -900,9 +1086,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     products: activeProducts,
     allProducts,
     categories: activeCategories,
+    allCategories: categories,
     collections: activeCollections,
     inventoryByProduct,
     deliveryZones: activeZones,
+    allDeliveryZones: deliveryZones,
+    deliverySettings,
     sizeGuides: activeSizeGuides,
     storeSettings,
     aiConfig,
@@ -921,6 +1110,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     saveAddress,
     deleteAddress,
     placeOrder,
+    submitGatewayPaymentReference,
     signOut,
     refreshCatalog: loadCatalogSnapshot,
   };

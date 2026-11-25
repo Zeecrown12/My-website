@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, Minus, Plus, Trash2 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { formatMoney } from '../lib/formatters';
+import { formatMoney, resolveProductImageUrl } from '../lib/formatters';
 
 export function CartPage() {
   const {
@@ -72,7 +72,7 @@ export function CartPage() {
                 }}
               >
                 <img
-                  src={item.productImageUrl || '/assets/zeecrown-logo.jpg'}
+                  src={resolveProductImageUrl(item.productImageUrl)}
                   alt={item.productTitle}
                   style={{
                     width: 80,

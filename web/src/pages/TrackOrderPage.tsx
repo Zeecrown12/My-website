@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { Search } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { buildTrackingLookupId, db, FUNCTIONS_BASE_URL } from '../lib/firebase';
+import { buildTrackingLookupId, db } from '../lib/firebase';
 import { formatMoney, formatOrderStatus } from '../lib/formatters';
 import { OrderStatusHistoryEntry } from '../types/store';
 
@@ -24,6 +24,8 @@ interface TrackedProjection {
   statusHistory?: OrderStatusHistoryEntry[];
 }
 
+const LOOKUP_TIMESTAMPS: number[] = [];
+
 export function TrackOrderPage() {
   const [searchParams] = useSearchParams();
   const tokenParam = searchParams.get('token') || '';
@@ -41,35 +43,20 @@ export function TrackOrderPage() {
     orderNum?: string;
     contactInfo?: string;
   }) => {
+    const now = Date.now();
+    while (LOOKUP_TIMESTAMPS.length > 0 && now - LOOKUP_TIMESTAMPS[0] > 60_000) {
+      LOOKUP_TIMESTAMPS.shift();
+    }
+    if (LOOKUP_TIMESTAMPS.length >= 12) {
+      setError('Too many tracking attempts. Please wait a minute and try again.');
+      return;
+    }
+    LOOKUP_TIMESTAMPS.push(now);
+
     setLoading(true);
     setError(null);
     try {
-      // 1. Try Cloud Functions lookupGuestOrder if configured
-      const fnUrl = FUNCTIONS_BASE_URL
-        ? `${FUNCTIONS_BASE_URL}/lookupGuestOrder`
-        : '/api/ai/guest-track';
-      try {
-        const res = await fetch(fnUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            trackingToken: params.token?.trim() || undefined,
-            orderNumber: params.orderNum?.trim() || undefined,
-            contact: params.contactInfo?.trim() || undefined,
-          }),
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { projection?: TrackedProjection };
-          if (data.projection) {
-            setResult(data.projection);
-            return;
-          }
-        }
-      } catch {
-        // Fallback directly to PII-redacted Firestore tracking projection docs
-      }
-
-      // 2. Direct single-doc get allowed by firestore.rules (no list enumeration)
+      // Direct single-doc get allowed by firestore.rules (no list enumeration, Spark-compatible)
       if (params.token && params.token.trim().length >= 8) {
         const tokenSnap = await getDoc(doc(db, 'orderTrackingTokens', params.token.trim()));
         if (tokenSnap.exists()) {

@@ -2,8 +2,17 @@ import { CurrencyCode } from '../types/store';
 
 export const OFFICIAL_WHATSAPP_DISPLAY = '+234 816 989 8763';
 export const OFFICIAL_WHATSAPP_URL = 'https://wa.me/2348169898763';
+export const OFFICIAL_STORE_EMAIL = 'Zeecrownbusiness@gmail.com';
 export const NO_RETURNS_POLICY_DEFAULT =
   'ZEECROWN STORE currently does not accept customer returns or refunds. Please carefully review product descriptions, photos, colour notes, and the Size Guide before placing an order, or message Customer Care on WhatsApp (+234 816 989 8763) prior to checkout. If an item arrives damaged or incorrect, contact Customer Care with your order number for direct review.';
+
+export function resolveEffectiveSupportEmail(configured?: string): string {
+  const clean = (configured || '').trim();
+  if (!clean || clean.toLowerCase() === 'olaademi.zo@gmail.com') {
+    return OFFICIAL_STORE_EMAIL;
+  }
+  return clean;
+}
 
 export function resolveEffectiveReturnPolicy(configured?: string): string {
   const clean = (configured || '').trim();
@@ -51,4 +60,15 @@ export function formatOrderStatus(status: string): string {
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+export function resolveProductImageUrl(raw?: string): string {
+  const clean = (raw || '').trim();
+  if (!clean) return '/assets/zeecrown-logo.jpg';
+  if (clean.startsWith('drawable://')) {
+    const key = clean.slice('drawable://'.length).replace(/[^a-zA-Z0-9_-]/g, '');
+    if (key === 'zeecrown_logo') return '/assets/zeecrown-logo.jpg';
+    return `/assets/${key}.jpg`;
+  }
+  return clean;
 }
