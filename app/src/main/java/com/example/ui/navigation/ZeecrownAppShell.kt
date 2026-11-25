@@ -96,6 +96,7 @@ import com.example.R
 import com.example.data.analytics.AnalyticsTracker
 import com.example.data.firebase.AuthManager
 import com.example.data.firebase.UiState
+import com.example.data.firebase.ensureFirebaseInitialized
 import com.example.data.model.AdminRole
 import com.example.data.model.AiActionDestination
 import com.example.data.model.BoutiqueContactHelper
@@ -194,10 +195,39 @@ fun ZeecrownAppRoot(
     onDeepLinkHandled: () -> Unit = {},
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val credentialManager = remember(context) { CredentialManager.create(context) }
+    val firebaseReady = remember(context) { ensureFirebaseInitialized(context) }
+    if (!firebaseReady) {
+        Scaffold(
+            containerColor = ZeecrownWarmIvory,
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                BoutiqueEmptyView(
+                    title = "Store Configuration Unavailable",
+                    subtitle = "Firebase app configuration is missing or incomplete in this build. Please ensure app/google-services.json matches com.aistudio.zeecrownstore.zcwrmx and rebuild the APK.",
+                    actionLabel = "Contact Support on WhatsApp",
+                    onAction = {
+                        launchWhatsAppChat(
+                            context = context,
+                            configuredNumber = BoutiqueContactHelper.OFFICIAL_WHATSAPP_NUMBER_DISPLAY,
+                            prefilledMessage = "Hello ZEECROWN Customer Care, I need assistance with the Android app startup configuration.",
+                        )
+                    },
+                )
+            }
+        }
+        return
+    }
 
-    var currentUser by remember { mutableStateOf(Firebase.auth.currentUser) }
+    val scope = rememberCoroutineScope()
+    val credentialManager = remember(context) { runCatching { CredentialManager.create(context) }.getOrNull() }
+
+    var currentUser by remember { mutableStateOf(runCatching { Firebase.auth.currentUser }.getOrNull()) }
     var pendingBootstrapData by remember { mutableStateOf(RegistrationBootstrapData()) }
     var pendingPostAuthRoute by remember { mutableStateOf<String?>(null) }
 
@@ -280,7 +310,7 @@ private fun ZeecrownStoreShell(
     val isAdmin = adminRole.isAdmin
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val credentialManager = remember(context) { CredentialManager.create(context) }
+    val credentialManager = remember(context) { runCatching { CredentialManager.create(context) }.getOrNull() }
     val guestSessionRepository = remember(context) { GuestSessionRepository(context) }
     val isSignedIn = uid.isNotBlank()
 
@@ -313,8 +343,10 @@ private fun ZeecrownStoreShell(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted && uid.isNotBlank()) {
-            FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-                storefrontVm.registerFcmToken(token)
+            runCatching { FirebaseMessaging.getInstance().token }.onSuccess { task ->
+                task.addOnSuccessListener { token ->
+                    storefrontVm.registerFcmToken(token)
+                }.addOnFailureListener { }
             }
         }
     }
@@ -322,8 +354,10 @@ private fun ZeecrownStoreShell(
     LaunchedEffect(uid) {
         if (uid.isNotBlank()) {
             onConsumeBootstrapData()
-            FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-                storefrontVm.registerFcmToken(token)
+            runCatching { FirebaseMessaging.getInstance().token }.onSuccess { task ->
+                task.addOnSuccessListener { token ->
+                    storefrontVm.registerFcmToken(token)
+                }.addOnFailureListener { }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 val granted = ContextCompat.checkSelfPermission(
@@ -1138,8 +1172,10 @@ private fun ZeecrownStoreShell(
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 } else {
-                                    FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-                                        storefrontVm.registerFcmToken(token)
+                                    runCatching { FirebaseMessaging.getInstance().token }.onSuccess { task ->
+                                        task.addOnSuccessListener { token ->
+                                            storefrontVm.registerFcmToken(token)
+                                        }.addOnFailureListener { }
                                     }
                                 }
                             },

@@ -11,7 +11,6 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -206,12 +205,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         settingsSnap,
         aiSnap,
       ] = await Promise.all([
-        getDocs(collection(db, 'products')),
-        getDocs(query(collection(db, 'categories'), orderBy('sortOrder', 'asc'))),
-        getDocs(query(collection(db, 'storeCollections'), orderBy('sortOrder', 'asc'))).catch(() => null),
+        getDocs(query(collection(db, 'products'), where('active', '==', true))),
+        getDocs(query(collection(db, 'categories'), where('active', '==', true))).catch(() => null),
+        getDocs(query(collection(db, 'collections'), where('active', '==', true))).catch(() => null),
         getDocs(query(collection(db, 'inventory'), where('inStock', '==', true))).catch(() => null),
-        getDocs(query(collection(db, 'deliveryZones'), orderBy('sortOrder', 'asc'))).catch(() => null),
-        getDocs(query(collection(db, 'sizeGuides'), orderBy('sortOrder', 'asc'))).catch(() => null),
+        getDocs(query(collection(db, 'deliveryZones'), where('active', '==', true))).catch(() => null),
+        getDocs(query(collection(db, 'sizeGuides'), where('active', '==', true))).catch(() => null),
         getDoc(doc(db, 'storeSettings', 'public')).catch(() => null),
         getDoc(doc(db, 'aiConfig', 'public')).catch(() => null),
       ]);
@@ -251,36 +250,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       });
       setAllProducts(prods);
 
-      const cats: Category[] = catSnap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          name: String(data.name || ''),
-          slug: String(data.slug || d.id),
-          description: String(data.description || ''),
-          imageKey: typeof data.imageKey === 'string' ? data.imageKey : undefined,
-          parentCategoryId: typeof data.parentCategoryId === 'string' ? data.parentCategoryId : undefined,
-          sizeGuideId: typeof data.sizeGuideId === 'string' ? data.sizeGuideId : undefined,
-          sortOrder: Number(data.sortOrder || 0),
-          active: data.active !== false,
-        };
-      });
+      const cats: Category[] = (catSnap?.docs || [])
+        .map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            name: String(data.name || ''),
+            slug: String(data.slug || d.id),
+            description: String(data.description || ''),
+            imageKey: typeof data.imageKey === 'string' ? data.imageKey : undefined,
+            parentCategoryId: typeof data.parentCategoryId === 'string' ? data.parentCategoryId : undefined,
+            sizeGuideId: typeof data.sizeGuideId === 'string' ? data.sizeGuideId : undefined,
+            sortOrder: Number(data.sortOrder || 0),
+            active: data.active !== false,
+          };
+        })
+        .sort((a, b) => a.sortOrder - b.sortOrder);
       setCategories(cats);
 
       if (colSnap) {
         setCollections(
-          colSnap.docs.map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              name: String(data.name || ''),
-              slug: String(data.slug || d.id),
-              tagline: String(data.tagline || ''),
-              bannerKey: typeof data.bannerKey === 'string' ? data.bannerKey : undefined,
-              sortOrder: Number(data.sortOrder || 0),
-              active: data.active !== false,
-            };
-          })
+          colSnap.docs
+            .map((d) => {
+              const data = d.data();
+              return {
+                id: d.id,
+                name: String(data.name || ''),
+                slug: String(data.slug || d.id),
+                tagline: String(data.tagline || ''),
+                bannerKey: typeof data.bannerKey === 'string' ? data.bannerKey : undefined,
+                sortOrder: Number(data.sortOrder || 0),
+                active: data.active !== false,
+              };
+            })
+            .sort((a, b) => a.sortOrder - b.sortOrder)
         );
       }
 
@@ -304,47 +307,52 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       if (zoneSnap) {
         setDeliveryZones(
-          zoneSnap.docs.map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              name: String(data.name || ''),
-              region: String(data.region || ''),
-              feeNgn: Number(data.feeNgn || 0),
-              estimatedDays: String(data.estimatedDays || '2–5 business days'),
-              active: data.active !== false,
-              sortOrder: Number(data.sortOrder || 0),
-            };
-          })
+          zoneSnap.docs
+            .map((d) => {
+              const data = d.data();
+              const statesText = Array.isArray(data.states) ? data.states.filter(Boolean).join(', ') : '';
+              return {
+                id: d.id,
+                name: String(data.name || ''),
+                region: String(data.region || statesText || data.country || 'Nigeria'),
+                feeNgn: Number(data.feeNgn || 0),
+                estimatedDays: String(data.estimatedDays || '2–5 business days'),
+                active: data.active !== false,
+                sortOrder: Number(data.sortOrder || 0),
+              };
+            })
+            .sort((a, b) => a.sortOrder - b.sortOrder || a.feeNgn - b.feeNgn)
         );
       }
 
       if (sgSnap) {
         setSizeGuides(
-          sgSnap.docs.map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              name: String(data.name || ''),
-              categoryType: (data.categoryType || 'CUSTOM') as SizeGuide['categoryType'],
-              description: typeof data.description === 'string' ? data.description : undefined,
-              measurementUnitDefault: data.measurementUnitDefault === 'IN' ? 'IN' : 'CM',
-              columns: Array.isArray(data.columns) ? data.columns.map(String) : [],
-              rows: Array.isArray(data.rows) ? data.rows : [],
-              howToMeasureSteps: Array.isArray(data.howToMeasureSteps)
-                ? data.howToMeasureSteps.map(String)
-                : [],
-              fitNotes: typeof data.fitNotes === 'string' ? data.fitNotes : undefined,
-              assignedCategoryIds: Array.isArray(data.assignedCategoryIds)
-                ? data.assignedCategoryIds.map(String)
-                : [],
-              assignedProductIds: Array.isArray(data.assignedProductIds)
-                ? data.assignedProductIds.map(String)
-                : [],
-              sortOrder: Number(data.sortOrder || 0),
-              active: data.active !== false,
-            };
-          })
+          sgSnap.docs
+            .map((d) => {
+              const data = d.data();
+              return {
+                id: d.id,
+                name: String(data.name || ''),
+                categoryType: (data.categoryType || 'CUSTOM') as SizeGuide['categoryType'],
+                description: typeof data.description === 'string' ? data.description : undefined,
+                measurementUnitDefault: (data.measurementUnitDefault === 'IN' ? 'IN' : 'CM') as 'CM' | 'IN',
+                columns: Array.isArray(data.columns) ? data.columns.map(String) : [],
+                rows: Array.isArray(data.rows) ? data.rows : [],
+                howToMeasureSteps: Array.isArray(data.howToMeasureSteps)
+                  ? data.howToMeasureSteps.map(String)
+                  : [],
+                fitNotes: typeof data.fitNotes === 'string' ? data.fitNotes : undefined,
+                assignedCategoryIds: Array.isArray(data.assignedCategoryIds)
+                  ? data.assignedCategoryIds.map(String)
+                  : [],
+                assignedProductIds: Array.isArray(data.assignedProductIds)
+                  ? data.assignedProductIds.map(String)
+                  : [],
+                sortOrder: Number(data.sortOrder || 0),
+                active: data.active !== false,
+              };
+            })
+            .sort((a, b) => a.sortOrder - b.sortOrder)
         );
       }
 

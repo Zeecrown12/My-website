@@ -29,7 +29,7 @@ class ZeecrownMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        val uid = Firebase.auth.currentUser?.uid ?: return
+        val uid = runCatching { Firebase.auth.currentUser?.uid }.getOrNull() ?: return
         val appCtx = applicationContext
         serviceScope.launch {
             CommunicationRepository(appCtx).registerDeviceToken(uid, token)

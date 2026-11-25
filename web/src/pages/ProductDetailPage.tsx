@@ -62,12 +62,25 @@ export function ProductDetailPage() {
     setSelectedSize(product.sizes[0] || 'One Size');
     setSelectedColor(product.colors[0] || 'Standard');
 
-    void getDocs(query(collection(db, 'reviews'), where('productId', '==', product.id)))
+    void getDocs(query(collection(db, 'reviews'), where('visible', '==', true)))
       .then((snap) => {
         setReviews(
           snap.docs
-            .map((d) => ({ id: d.id, ...(d.data() as Omit<ProductReview, 'id'>) }))
-            .filter((r) => r.approved !== false)
+            .map((d) => {
+              const data = d.data();
+              return {
+                id: d.id,
+                productId: String(data.productId || ''),
+                userId: String(data.userId || ''),
+                reviewerName: String(data.authorName || data.reviewerName || 'Verified Client'),
+                rating: Number(data.rating || 5),
+                title: typeof data.title === 'string' ? data.title : undefined,
+                comment: String(data.comment || ''),
+                approved: data.visible !== false && data.approved !== false,
+                createdAt: data.createdAt,
+              };
+            })
+            .filter((r) => r.productId === product.id && r.approved !== false)
         );
       })
       .catch(() => undefined);
@@ -125,23 +138,41 @@ export function ProductDetailPage() {
     if (!reviewComment.trim()) return;
     setReviewStatus('Submitting review...');
     try {
-      const revId = `rev_${user.uid}_web_${product.id}`.slice(0, 120);
+      const revId = `rev_${user.uid}_web_${product.id}_${Date.now()}`.slice(0, 120);
+      const authorName = (user.displayName || user.email?.split('@')[0] || 'Client').slice(0, 80);
+      const ratingInt = Math.min(5, Math.max(1, Math.round(reviewRating)));
+      const cleanComment = reviewTitle.trim()
+        ? `${reviewTitle.trim().slice(0, 120)} — ${reviewComment.trim()}`.slice(0, 1000)
+        : reviewComment.trim().slice(0, 1000);
       await setDoc(doc(db, 'reviews', revId), {
         productId: product.id,
         userId: user.uid,
-        reviewerName: (user.displayName || user.email?.split('@')[0] || 'Client').slice(0, 80),
-        rating: reviewRating,
-        title: reviewTitle.trim().slice(0, 120),
-        comment: reviewComment.trim().slice(0, 1000),
-        approved: true,
+        authorName,
+        rating: ratingInt,
+        comment: cleanComment,
+        visible: true,
+        moderationStatus: 'APPROVED',
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
+      setReviews((prev) => [
+        {
+          id: revId,
+          productId: product.id,
+          userId: user.uid,
+          reviewerName: authorName,
+          rating: ratingInt,
+          comment: cleanComment,
+          approved: true,
+        },
+        ...prev,
+      ]);
       setReviewTitle('');
       setReviewComment('');
       setReviewStatus('Thank you! Your review has been published.');
     } catch (err) {
       setReviewStatus(
-        err instanceof Error ? err.message : 'Unable to save review (reviews are permitted for verified buyers/accounts).'
+        err instanceof Error ? err.message : 'Unable to save review right now.'
       );
     }
   };

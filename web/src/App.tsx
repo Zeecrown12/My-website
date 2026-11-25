@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { StoreProvider } from './context/StoreContext';
 import { Layout } from './components/Layout';
 import { HomePage } from './pages/HomePage';
@@ -13,6 +13,7 @@ import { AdminPage } from './pages/AdminPage';
 import {
   AboutPage,
   ContactPage,
+  NotFoundPage,
   ReturnsPolicyPage,
   ShippingPolicyPage,
 } from './pages/PolicyPages';
@@ -39,7 +40,7 @@ export function App() {
             <Route path="/about" element={<AboutPage />} />
             <Route path="/shipping-policy" element={<ShippingPolicyPage />} />
             <Route path="/returns-policy" element={<ReturnsPolicyPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Layout>
       </StoreProvider>

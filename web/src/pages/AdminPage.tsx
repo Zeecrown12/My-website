@@ -156,6 +156,10 @@ export function AdminPage() {
         },
         body: JSON.stringify({ imageUrls: pImageUrls }),
       });
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('AI photo analyzer endpoint is not configured on this host (set VITE_FUNCTIONS_BASE_URL).');
+      }
       const data = (await res.json()) as {
         error?: string;
         suggestion?: {
@@ -213,28 +217,27 @@ export function AdminPage() {
 
     setStatusMsg('Saving product...');
     try {
-      await setDoc(
-        doc(db, 'products', prodId),
-        {
-          title: pTitle.trim().slice(0, 120),
-          slug: slug.slice(0, 120),
-          description: pDesc.trim().slice(0, 2000),
-          categoryId: pCatId,
-          priceNgn: ngn,
-          priceUsd: usd,
-          mainImageUrl: (pImageUrls[0] || '').slice(0, 600),
-          imageUrls: pImageUrls.slice(0, 10),
-          sizes,
-          colors,
-          features,
-          featured: pFeatured,
-          newArrival: !editingId,
-          active: pActive,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: Boolean(editingId) }
-      );
+      const productPayload: Record<string, unknown> = {
+        title: pTitle.trim().slice(0, 120),
+        slug: slug.slice(0, 120),
+        description: pDesc.trim().slice(0, 2000),
+        categoryId: pCatId,
+        priceNgn: ngn,
+        priceUsd: usd,
+        mainImageUrl: (pImageUrls[0] || '').slice(0, 600),
+        imageUrls: pImageUrls.slice(0, 10),
+        sizes,
+        colors,
+        features,
+        featured: pFeatured,
+        active: pActive,
+        updatedAt: serverTimestamp(),
+      };
+      if (!editingId) {
+        productPayload.newArrival = true;
+        productPayload.createdAt = serverTimestamp();
+      }
+      await setDoc(doc(db, 'products', prodId), productPayload, { merge: Boolean(editingId) });
 
       const qty = Math.max(0, Math.round(Number(pStock) || 0));
       await setDoc(

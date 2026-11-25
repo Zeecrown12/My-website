@@ -198,13 +198,18 @@ object AuthManager {
 
     fun attemptAutoSignIn(
         context: Context,
-        credentialManager: CredentialManager,
+        credentialManager: CredentialManager?,
         onAuthSuccess: () -> Unit,
         onUnauthenticated: () -> Unit,
         scope: CoroutineScope,
     ) {
-        if (Firebase.auth.currentUser != null) {
+        val currentUser = runCatching { Firebase.auth.currentUser }.getOrNull()
+        if (currentUser != null) {
             onAuthSuccess()
+            return
+        }
+        if (credentialManager == null) {
+            onUnauthenticated()
             return
         }
         val clientId = resolveWebClientId(context)
@@ -232,7 +237,9 @@ object AuthManager {
                 } else {
                     onUnauthenticated()
                 }
-            } catch (_: Exception) {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
                 onUnauthenticated()
             }
         }
@@ -240,12 +247,16 @@ object AuthManager {
 
     fun onGoogleSignInClicked(
         context: Context,
-        credentialManager: CredentialManager,
+        credentialManager: CredentialManager?,
         onAuthSuccess: () -> Unit,
         onAuthError: (String) -> Unit,
         scope: CoroutineScope,
         onAuthCancelled: () -> Unit = {},
     ) {
+        if (credentialManager == null) {
+            onAuthError("Google Sign-In is unavailable on this device. Please sign in with email and password.")
+            return
+        }
         val clientId = resolveWebClientId(context)
         if (clientId == null) {
             onAuthError("Google Sign-In configuration missing.")
@@ -272,10 +283,12 @@ object AuthManager {
                 } else {
                     onAuthError("Unexpected credential type returned.")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: GetCredentialCancellationException) {
                 Log.w(TAG, "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
                 onAuthCancelled()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "Google Sign-In failed", e)
                 onAuthError(e.localizedMessage ?: "Sign in failed. Please try again.")
             }
@@ -283,18 +296,18 @@ object AuthManager {
     }
 
     fun signOut(
-        credentialManager: CredentialManager,
+        credentialManager: CredentialManager?,
         scope: CoroutineScope,
         onSignOutComplete: () -> Unit = {},
     ) {
         scope.launch {
             withContext(NonCancellable) {
                 try {
-                    credentialManager.clearCredentialState(ClearCredentialStateRequest())
-                } catch (e: Exception) {
+                    credentialManager?.clearCredentialState(ClearCredentialStateRequest())
+                } catch (e: Throwable) {
                     Log.w(TAG, "Failed to clear credential state: ${e.message}")
                 } finally {
-                    Firebase.auth.signOut()
+                    runCatching { Firebase.auth.signOut() }
                     onSignOutComplete()
                 }
             }

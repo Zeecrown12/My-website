@@ -68,14 +68,17 @@ export function AccountPage() {
 
   const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subject.trim() || !message.trim()) return;
+    if (subject.trim().length < 2 || message.trim().length < 5) {
+      setSupportStatus('Please enter a subject (at least 2 characters) and message (at least 5 characters).');
+      return;
+    }
     setSupportStatus('Sending enquiry...');
     try {
       const ref = await addDoc(collection(db, 'supportEnquiries'), {
         userId: user.uid,
         customerName: (user.displayName || user.email?.split('@')[0] || 'Client').slice(0, 80),
         customerEmail: (user.email || '').slice(0, 200),
-        category: 'GENERAL_SUPPORT',
+        category: 'GENERAL',
         subject: subject.trim().slice(0, 140),
         message: message.trim().slice(0, 1800),
         status: 'NEW',
@@ -89,7 +92,7 @@ export function AccountPage() {
           id: ref.id,
           userId: user.uid,
           customerName: user.displayName || 'Client',
-          category: 'GENERAL_SUPPORT',
+          category: 'GENERAL',
           subject: subject.trim(),
           message: message.trim(),
           status: 'NEW',

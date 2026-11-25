@@ -41,7 +41,16 @@ jobs:
         run: |
           test -s web/dist/index.html
           test -d web/dist/assets
+          test -s web/dist/.well-known/assetlinks.json
           ls -lh web/dist/index.html
+
+      - name: Upload Website Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zeecrown-store-website-dist
+          path: web/dist
+          if-no-files-found: error
+          retention-days: 30
 
   backend-checks:
     name: Cloud Functions Lint, Build & Tests
@@ -124,12 +133,23 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           fi
 
+      - name: Verify Firebase Android configuration matches applicationId
+        run: |
+          if [ ! -s app/google-services.json ]; then
+            echo "Error: app/google-services.json is missing. Sync this file to prevent FirebaseApp launch crashes."
+            exit 1
+          fi
+          if ! grep -q '"package_name"[[:space:]]*:[[:space:]]*"com.aistudio.zeecrownstore.zcwrmx"' app/google-services.json; then
+            echo "Error: app/google-services.json does not contain a client entry for com.aistudio.zeecrownstore.zcwrmx."
+            exit 1
+          fi
+
       - name: Build Android Debug APK
         run: |
           if [ -x ./gradlew ]; then
-            ./gradlew :app:assembleDebug --no-daemon --stacktrace
+            ./gradlew :app:clean :app:assembleDebug --no-daemon --stacktrace
           else
-            gradle :app:assembleDebug --no-daemon --stacktrace
+            gradle :app:clean :app:assembleDebug --no-daemon --stacktrace
           fi
 
       - name: Verify Android Debug APK and Firebase resource generation
@@ -140,16 +160,12 @@ jobs:
             exit 1
           fi
           ls -lh "$APK_PATH"
-          if [ ! -s app/google-services.json ]; then
-            echo "::warning::app/google-services.json is missing from the repository; Google Services resources (default_web_client_id) were not bundled."
-          else
-            GENERATED_GS_VALUES="app/build/generated/res/processDebugGoogleServices/values/values.xml"
-            if [ -s "$GENERATED_GS_VALUES" ] && grep -q 'name="default_web_client_id"' "$GENERATED_GS_VALUES"; then
-              echo "Verified generated default_web_client_id in $GENERATED_GS_VALUES"
-            else
-              echo "::warning::default_web_client_id was not generated in $GENERATED_GS_VALUES; verify app/google-services.json matches applicationId and includes an OAuth web client (client_type 3)."
-            fi
+          GENERATED_GS_VALUES="app/build/generated/res/processDebugGoogleServices/values/values.xml"
+          if [ ! -s "$GENERATED_GS_VALUES" ] || ! grep -q 'name="google_app_id"' "$GENERATED_GS_VALUES" || ! grep -q 'name="default_web_client_id"' "$GENERATED_GS_VALUES"; then
+            echo "Error: Google Services resources (google_app_id / default_web_client_id) were not generated into $GENERATED_GS_VALUES."
+            exit 1
           fi
+          echo "Verified generated google_app_id and default_web_client_id in $GENERATED_GS_VALUES"
 
       - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4

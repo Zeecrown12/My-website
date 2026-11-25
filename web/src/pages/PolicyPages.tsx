@@ -150,3 +150,27 @@ export function ReturnsPolicyPage() {
     </div>
   );
 }
+
+export function NotFoundPage() {
+  return (
+    <div className="container section">
+      <div className="card" style={{ padding: 36, textAlign: 'center', maxWidth: 620, margin: '0 auto' }}>
+        <p style={{ color: '#8A6A1C', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+          404 &middot; Page Not Found
+        </p>
+        <h1 style={{ marginBottom: 12 }}>We couldn&apos;t find that boutique page</h1>
+        <p style={{ color: '#5C4B6E', marginBottom: 22 }}>
+          The collection or page link you followed may have moved. Browse our full collection or return home.
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Link to="/" className="btn btn-secondary">
+            Return Home
+          </Link>
+          <Link to="/shop" className="btn">
+            Browse All Pieces
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}

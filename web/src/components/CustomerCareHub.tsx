@@ -155,14 +155,17 @@ export function CustomerCareHub() {
       setTicketStatus('Please sign in first to submit an account support ticket, or use WhatsApp.');
       return;
     }
-    if (!ticketSubject.trim() || !ticketMessage.trim()) return;
+    if (ticketSubject.trim().length < 2 || ticketMessage.trim().length < 5) {
+      setTicketStatus('Please enter a subject (at least 2 characters) and message (at least 5 characters).');
+      return;
+    }
     setTicketStatus('Submitting...');
     try {
       await addDoc(collection(db, 'supportEnquiries'), {
         userId: user.uid,
         customerName: (user.displayName || user.email?.split('@')[0] || 'Client').slice(0, 80),
         customerEmail: (user.email || '').slice(0, 200),
-        category: mode === 'SHOPPING' ? 'PRODUCT_ENQUIRY' : 'CUSTOMER_SUPPORT',
+        category: mode === 'SHOPPING' ? 'SIZING' : 'GENERAL',
         subject: ticketSubject.trim().slice(0, 140),
         message: ticketMessage.trim().slice(0, 1800),
         status: 'NEW',
